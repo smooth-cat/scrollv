@@ -1,9 +1,9 @@
 {
-  "name": "smooth-cat",
+  "name": "wc-scroll",
   "version": "0.0.1",
-  "main": "dist/smooth-cat.cjs.js",
-  "module": "dist/smooth-cat.esm.js",
-  "browser": "dist/smooth-cat.umd.js",
+  "main": "dist/wc-scroll.cjs.js",
+  "module": "dist/wc-scroll.esm.js",
+  "browser": "dist/wc-scroll.umd.js",
   "types": "dist/index.d.ts",
   "devDependencies": {
     "@rollup/plugin-commonjs": "^11.0.1",
@@ -32,10 +32,15 @@
   "author": "smooth-cat",
   "repository": {
     "type": "git",
-    "url": "git+git@github.com:smooth-cat/rollup-template.git"
+    "url": "git+git@github.com:smooth-cat/wc-scroll.git"
   },
   "bugs": {
-    "url": "https://github.com/smooth-cat/rollup-template/issues"
+    "url": "https://github.com/smooth-cat/wc-scroll/issues"
   },
-  "homepage": "https://github.com/smooth-cat/rollup-template#readme"
+  "homepage": "https://github.com/smooth-cat/wc-scroll#readme",
+  "keyWords": [
+    "wc",
+    "scroll"
+  ],
+  "description": "a web component scroll tool"
 }
