@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document</title>
+</head>
+<style>
+  #wrapper {
+    position: relative;
+    height: 500px;
+    overflow: auto;
+  }
+  #p {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 2000px;
+    background-color: black;
+  }
+  #list {
+    position: relative;
+    height: 1000px;
+    background-color: pink;
+  }
+</style>
+<body>
+  <div id="wrapper" >
+    <div id="p"></div>
+    <div id="list">1</div>
+  </div>
+</body>
+<script>
+  const wrapper = document.getElementById('wrapper');
+  const list = document.getElementById('list');
+  wrapper.addEventListener('scroll', () => {
+    list.style.setProperty('transform', `translateY(${wrapper.scrollTop}px)`)
+  })
+</script>
+</html>
