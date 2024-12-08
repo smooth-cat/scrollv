@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document</title>
+</head>
+<body>
+  <input id="ipt" />
+  <button id="btn"></button>
+  <div id="list" style="height: 300px; overflow: auto;" >
+    <div style="height: 50px;border: 1px solid black;">1</div>
+    <div style="height: 50px;border: 1px solid black;">2</div>
+    <div style="height: 50px;border: 1px solid black;">3</div>
+    <div style="height: 50px;border: 1px solid black;">4</div>
+    <div style="height: 50px;border: 1px solid black;">5</div>
+    <div style="height: 50px;border: 1px solid black;">6</div>
+    <div style="height: 50px;border: 1px solid black;">7</div>
+    <div style="height: 50px;border: 1px solid black;">8</div>
+    <div style="height: 50px;border: 1px solid black;">9</div>
+    <div style="height: 50px;border: 1px solid black;">10</div>
+  </div>
+</body>
+<script>
+  btn.addEventListener('click', () => {
+    const n = performance.now()
+    while (1) {
+      if(performance.now() - n > 5000) {
+        break;
+      }
+    }
+  })
+  ipt.addEventListener('input', (e) => {
+    console.log('input', e.target.value);
+  })
+  list.addEventListener('scroll', () => {
+    console.log('scroll');
+  })
+</script>
+</html>

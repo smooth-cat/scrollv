@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document</title>
+</head>
+<body>
+  <div id="list" style="height: 300px; overflow: auto;" >
+    <div style="height: 50px;border: 1px solid black;">1</div>
+    <div style="height: 50px;border: 1px solid black;">2</div>
+    <div style="height: 50px;border: 1px solid black;">3</div>
+    <div style="height: 50px;border: 1px solid black;">4</div>
+    <div style="height: 50px;border: 1px solid black;">5</div>
+    <div style="height: 50px;border: 1px solid black;">6</div>
+    <div style="height: 50px;border: 1px solid black;">7</div>
+    <div style="height: 50px;border: 1px solid black;">8</div>
+    <div style="height: 50px;border: 1px solid black;">9</div>
+    <div style="height: 50px;border: 1px solid black;">10</div>
+  </div>
+</body>
+<script>
+  const list = document.getElementById('list');
+  function name(e)  {
+    e.preventDefault();
+    console.log('变了');
+  }
+  
+  list.removeEventListener('scroll', name)
+  list.scrollTop = 30;
+
+  Promise.resolve().then(() => {
+    const marco = new MessageChannel();
+    marco.port1.postMessage('reSub')
+    marco.port2.onmessage = () => {
+      console.log('重新监听');
+      list.addEventListener('scroll', name);
+      marco.port2.onmessage = null;
+    }
+  })
+
+  // setTimeout(() => {
+  //   list.addEventListener('scroll', name)
+  // });
+</script>
+</html>

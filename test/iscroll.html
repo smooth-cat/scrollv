@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/iScroll/5.2.0/iscroll.min.js"></script>
+</head>
+<body>
+  <div id="wrapper" style="height: 300px; overflow: hidden;" >
+    <ul id="list" >
+      <li style="height: 50px;border: 1px solid black;">1</li>
+      <li style="height: 50px;border: 1px solid black;">2</li>
+      <li style="height: 50px;border: 1px solid black;">3</li>
+      <li style="height: 50px;border: 1px solid black;">4</li>
+      <li style="height: 50px;border: 1px solid black;">5</li>
+      <li style="height: 50px;border: 1px solid black;">6</li>
+      <li style="height: 50px;border: 1px solid black;">7</li>
+      <li style="height: 50px;border: 1px solid black;">8</li>
+      <li style="height: 50px;border: 1px solid black;">9</li>
+      <li style="height: 50px;border: 1px solid black;">10</li>
+    </ul>
+  </div>
+</body>
+<script>
+  console.log('IScroll', IScroll);
+  var myScroll = new IScroll('#wrapper', {
+    scrollbars: false, 
+    mouseWheel: true,
+  });
+</script>
+</html>
