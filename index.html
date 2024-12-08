@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Mock.js/1.0.1-beta1/mock.js" integrity="sha512-siqHsq6D0/vqgBA3kpVxCyC9whF4TyyegsJcBOCyE6Z/GkG0++Z8RPTIQV5Xw8GB6a1m9xbmHqNdL3/4hNVvZg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="./dist/wc-scroll.umd.js" ></script>
+</head>
+<style>
+  .item {
+    box-sizing: border-box;
+  }
+  .red {
+    border: 1px solid red;
+  }
+  .blue {
+    border: 1px solid blue;
+  }
+</style>
+<body style="height: 80vh;">
+  <div style="height: 100%; display: flex; flex-direction: column;">
+    <div style="flex: none;">123</div>
+    <wc-scroll id="scroll" style="flex: 1; height: 1px;" total="50" itemHeight="350" buffer="2">
+    
+    </wc-scroll>
+  </div>
+</body>
+<script>
+  const scroll= document.getElementById('scroll');
+  const data = Array.from({length: 50}, (_, i) => `第${i}项<br/>${window.Mock.Random.paragraph()}`)
+  scroll.addEventListener('slice', (e) => {
+    const {start, end} = e.detail;
+    const html = data.slice(start, end).map((it, i) => {
+      const isSingle = (start+i) % 2 === 1;
+      return `<div class="${isSingle ? 'blue' : 'red'} item">${it}</div>`
+    }).join('');
+    // console.log({html});
+    scroll.innerHTML = html;
+  })
+</script>
+</html>

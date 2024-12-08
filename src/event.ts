@@ -46,8 +46,16 @@ export class BaseEvent {
 	}
 
 	callSub(it: Func, fns, args) {
-		if(it['once'] === true) fns.delete(it);
-		it(...args);
+    const doCall = (...args) => {
+      it(...args);
+      if(it['once'] === true) fns.delete(it);
+    }
+    if(it['scheduler']) {
+      it['scheduler'](doCall, ...args)
+    } else {
+      it(...args);
+      if(it['once'] === true) fns.delete(it);
+    }
 	}
 
 	// construct 会初始化为下面其中一种
