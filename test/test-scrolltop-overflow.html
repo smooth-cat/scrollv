@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/iScroll/5.2.0/iscroll.min.js"></script>
+</head>
+<body>
+  <div id="wrapper" style="height: 300px; overflow: auto; background-color: black;" >
+    <div id="list1" style="height: 900px; background-color: yellow;" >
+     
+    </div>
+  </div>
+  <button id="btn1">滚动到底</button>
+  <button id="btn2">升高内容区+滚动到底</button>
+  <button id="btn3">降低内容区+滚动到底</button>
+</body>
+<script>
+  
+  wrapper.addEventListener('scroll', () => {
+    console.log(wrapper.scrollTop);
+  })
+  btn1.addEventListener('click', () => {
+    wrapper.scrollTop = 600;
+  })
+  btn2.addEventListener('click', () => {
+    list1.style.setProperty('height', `1000px`);
+    wrapper.scrollTop = 1000;
+  })
+  btn3.addEventListener('click', () => {
+    list1.style.setProperty('height', `800px`);
+    wrapper.scrollTop = 1000;
+  })
+</script>
+</html>

@@ -139,13 +139,14 @@ export class AutoWcScroll extends HTMLElement {
       if (entry.target === this.wrapper) {
         const itemHeight = this.getProp('itemHeight');
         const height = entry.contentRect.height;
+        this.wrapperHeight = height;
         // 下拉高度超过了当前渲染内容的高度，则紧急补上， 注意 renderCount 依赖 wrapperHeight，不能提前更新 wrapperHeight
-        if (height > (this.renderCount - 1) * itemHeight) {
-          this.wrapperHeight = height;
-          this.emitSliceAndFix();
-        } else {
-          this.wrapperHeight = height;
-        }
+        // if (height > (this.renderCount - 1) * itemHeight) {
+        //   this.wrapperHeight = height;
+        //   this.emitSliceAndFix();
+        // } else {
+        //   this.wrapperHeight = height;
+        // }
       }
     }
   }, 300);
@@ -185,15 +186,20 @@ export class AutoWcScroll extends HTMLElement {
     const total = this.getProp('total');
     const buffer = this.getProp('buffer');
     // [0-end] 可填满 sTop
-    const { end: start, remain } = this.calcEnd(0, sTop);
+    const { end: start, remain, overflow } = this.calcEnd(0, sTop);
     // 第一次是按 第0次 真实渲染的高度计算新 start ✅，sTop = 第0项 + 第1项remain 部分
     // 第二次是按 第1次 真实渲染高度计算，此时，sTop = 第0项 + 第1项 + 第二项remain 部分
     // 但此时会按 第0项(virtual) + 第一项 + 第二项 ... 进行 start 计算，此时的偏差在 第0项的真实与virtual
     this.start = start;
     const screen = remain + this.wrapperHeight;
     const { end } = this.calcEnd(start, screen);
-    this.end = Math.min(end + buffer + 1, total);
-    console.log({ sTop, remain });
+    if(end == null) {
+      this.end = total;
+    } else {
+      this.end = Math.min(end + buffer + 1, total);
+    }
+    console.log({ sTop, remain, overflow });
+    console.log(`prev:${this.memoStart}~${this.memoEnd} curr:${this.start}~${this.end}`);
     this.remain = remain;
     this.emitSliceAndFix();
   };
@@ -210,6 +216,9 @@ export class AutoWcScroll extends HTMLElement {
     // 高度差
     const deltaH = height - expectH;
 
+    console.log(`prev-holder:${this.placeholder.style.getPropertyValue('height')} curr-holder: ${this.expectPlaceholderHeight + deltaH}`);
+    // 必须在修正 placeholder 前获取，否则placeholder变小时会改变 sTop，从而影响真正的计算
+    let sTop = this.wrapper.scrollTop;
     this.placeholder.style.setProperty('height', `${this.expectPlaceholderHeight + deltaH}px`);
     const items = this.slotEl.assignedElements();
     // if (
@@ -250,18 +259,19 @@ export class AutoWcScroll extends HTMLElement {
     this.memoStart = this.start;
     this.memoEnd = this.end;
 
-    let sTop = this.wrapper.scrollTop;
     
+    const topAfterTotalFix = sTop;
     // TODO: 触底时 scrollTop 过高导致底部留白
     if (deltaTop) {
       // 向上滚动 3000 -> 0 的时候 deltaTop 为负，由 itemHeight 设置过高触发
       this.wrapper.scrollTop = this.ignoreTop = sTop = Math.max(sTop + deltaTop, 0);
     }
-    console.log('fix', {sTop, deltaTop});
+    console.log('fix', {topAfterTotalFix, sTop, deltaTop});
+    console.log('----------------------------------');
+    
     if (this.remain != null) {
       this.list.style.setProperty('transform', `translate3d(0,${sTop - this.remain}px,0)`);
     }
-    this.remain = undefined;
   };
 
   ignoreTop: number;
@@ -344,6 +354,7 @@ export class AutoWcScroll extends HTMLElement {
       else {
         remain -= virtualCount * itemHeight;
         end = total - 1;
+        debugger;
         throw '无法填满';
       }
       break;
@@ -351,7 +362,7 @@ export class AutoWcScroll extends HTMLElement {
 
     return {
       // end 含 -1计算，数组长度极端情况需要更改
-      end: Math.max(end, 0),
+      end: end == null ? end : Math.max(end, 0),
       overflow,
       remain
     };
