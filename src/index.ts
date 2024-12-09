@@ -1,4 +1,4 @@
-import { AutoWcScroll } from "./auto-height";
+import { AutoWcScroll } from "./auto-wheel";
 import { WcScroll } from "./fix-height";
 import { Events } from "./util";
 
