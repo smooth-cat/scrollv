@@ -6,7 +6,7 @@ const SLICE_EVENT = 'slice';
 const keys = {
   total: undefined,
   itemHeight: undefined,
-  buffer: undefined
+  pad: undefined
 };
 
 export type Keys = keyof typeof keys;
@@ -27,8 +27,16 @@ export class AutoWcScroll extends HTMLElement {
   list: HTMLElement;
   slotEl: HTMLSlotElement;
   memoHeight = new Map<number, number>();
-  memoStart: number;
-  memoEnd: number;
+  padStart = 0;
+  padEnd = 0;
+  // memoStart: number;
+  // memoEnd: number;
+  memo = {
+    start:0,
+    end: 0,
+    padStart:0,
+    padEnd: 0,
+  };
 
   /*----------------- 需计算的属性 -----------------*/
   /** 渲染起始位置 */
@@ -145,8 +153,8 @@ export class AutoWcScroll extends HTMLElement {
   }
   createPos = () => {
     const that = this;
-    const start = that.start;
-    const end = that.end;
+    const start = that.padStart;
+    const end = that.padEnd;
     const pos = {
       get start() {
         if (!this.filed) {
@@ -168,61 +176,49 @@ export class AutoWcScroll extends HTMLElement {
     /** 被滚动过的区域 */
     scrolled: 0
   };
-  RATE = 1;
+  RATE = 0.5;
   onWheel = (e: WheelEvent) => {
     const scrolled = this.startItem.scrolled;
-    const buffer = this.getProp('buffer');
+    const pad = this.getProp('pad');
     const total = this.getProp('total');
-    const itemHeight = this.getProp('itemHeight');
     let dtY = e.deltaY * this.RATE;
     const { minDtY, maxDtY } = this;
-    dtY = Math.min(Math.max(minDtY,dtY), maxDtY)
-    console.log({dtY});
+    // TODO: 补充 startPad
+    dtY = Math.min(Math.max(minDtY, dtY), maxDtY);
     
+
     this.sTop += dtY;
 
-
-    const scrollInRender = dtY >= -scrolled && dtY < this.renderHeight - scrolled;
-    // 在渲染出的项中滑动
-    if (scrollInRender) {
-      const { end: start, remain, overflow } = this.calcEnd(this.memoStart, scrolled + dtY);
+    // 向下滑动
+    if (dtY >= 0) {
+      const { end: start = 0, remain, overflow } = this.calcEnd(this.memo.start, scrolled + dtY);
+      const screen = remain + this.wrapperHeight;
+      const { end = total } = this.calcEnd(start, screen);
+ 
+      this.overflow = overflow;
       this.start = start;
-      const screen = remain + this.wrapperHeight;
-      const { end } = this.calcEnd(start, screen);
-      this.overflow = overflow;
-      if (end == null) {
-        this.end = total;
-      } else {
-        this.end = Math.min(end + buffer + 1, total);
-      }
+      this.padStart = nature(start - pad);
+      this.end = end;
+      this.padEnd = Math.min(this.end + pad + 1, total);
       this.emitSliceAndFix();
       return;
     }
-    // 在虚拟项中向上滑动
-    if(dtY < -scrolled) {
-      let absDt = -dtY - scrolled;
- 
-      //    |  absDt | 
-      //  [ | ]  [  ]  [ | ]
-      //    | | -> overflow
-      //  | dtc=2   |
-      // 假设移动了半项 absDt = 0.5 itemHeight -> dtCount = 1, memoStart - 1 正好是新的 start
-      const dtCount = Math.ceil(absDt / itemHeight);
-      const newStart = this.memoStart - dtCount;
-      const overflow = absDt - itemHeight * nature(dtCount - 1);
-      const remain = itemHeight - overflow;
-      const screen = remain + this.wrapperHeight;
-      const { end } = this.calcEnd(newStart, screen);
-      this.start = newStart;
-      this.end = Math.min(end + buffer + 1, total);
-      this.overflow = overflow;
-      this.emitSliceAndFix();
-      return;
-    }
-    // TODO: 在虚拟项中向下滑动
-  };
 
- 
+    const preOverflow = this.overflow;
+    //  向上滑动, remain 和 overflow 是相反的，overflow 表示被 sTop 遮盖的部分，remain 表示第一项露出的部分
+    const { start=0, remain, overflow } = this.calcStart(this.memo.start, -dtY + preOverflow);
+    // TODO: 入过新的第一项是虚拟项，算出的 end 会不准
+    const screen = overflow + this.wrapperHeight;
+    const { end = total } = this.calcEnd(start, screen);
+   
+    this.overflow = remain;
+    this.start = start;
+    this.padStart = nature(start - pad);
+    this.end = end;
+    this.padEnd = Math.min(this.end + pad + 1, total);
+    this.emitSliceAndFix();
+    return;
+  };
 
   overflow: number;
   minDtY: number;
@@ -233,53 +229,69 @@ export class AutoWcScroll extends HTMLElement {
     const itemHeight = this.getProp('itemHeight');
     const items = this.slotEl.assignedElements();
     /** 首屏 */
-    const fp= this.overflow == null;
+    const fp = this.overflow == null;
 
     this.memoHeight.clear();
 
     let renderHeight = 0;
-    this.startItem.height = items[0]?.getBoundingClientRect().height || 0;
+    const startItemIdx = this.start - this.padStart
+    this.startItem.height = items[startItemIdx]?.getBoundingClientRect().height || 0;
     /** 从 scrollTop 到 end 的距离 */
-    let topToEnd = 0;
-
-    for (let i = this.start, j = 0; i < this.end; i++, j++) {
+    let topToPadEnd = 0;
+    let padToTop = 0;
+    for (let i = this.padStart, j = 0; i < this.padEnd; i++, j++) {
       const iRealHeight = items[j].getBoundingClientRect().height;
       renderHeight += iRealHeight;
       this.memoHeight.set(i, iRealHeight);
-      topToEnd += j === 0 ? (this.overflow ?? iRealHeight) : iRealHeight;
+      if(i >= this.start) {
+        topToPadEnd += i === this.start ? this.overflow ?? iRealHeight : iRealHeight;
+      }
+      if(i <= this.start) {
+        padToTop += iRealHeight;
+      }
     }
     this.renderHeight = renderHeight;
-    this.memoStart = this.start;
-    this.memoEnd = this.end;
+    this.memo = {
+      padStart: this.padStart,
+      padEnd: this.padEnd,
+      start: this.start,
+      end: this.end,
+    }
 
     /**可向下移动的最大距离 = 视口底部 到 总内容的最后一项
      * = (sTop 到 最后一项) - 视口高度
-     * = (sTop 到 end) + (end 到 最后一项) - 视口高度  
+     * = (sTop 到 end) + (end 到 最后一项) - 视口高度
      */
-    const maxDtY = topToEnd + nature(total - this.end) * itemHeight - this.wrapperHeight;
+    const maxDtY = topToPadEnd + nature(total - this.padEnd) * itemHeight - this.wrapperHeight;
     this.maxDtY = maxDtY;
 
-    if(!fp) {
-      const realRemain = this.startItem.height - this.overflow;
-      this.startItem.scrolled = realRemain;
-      this.list.style.setProperty('transform', `translate3d(0,${-realRemain}px,0)`);
-      this.minDtY = -nature(this.memoStart - 1) * itemHeight - this.startItem.scrolled;
-    } else {
-      this.minDtY = 0;
+    /**
+     * 可向上移动的最大距离 = 视口顶部 到 第一项顶部
+     * = [0, padStart) 虚拟项 + [padStart, start] 真实项 - overflow；
+     * 首屏 start 项的 overflow 是一整项
+     */
+    const minDtY = -(this.padStart * itemHeight + padToTop - (this.overflow ?? this.startItem.height))
+    this.minDtY = minDtY;
+    // 非首屏设置偏移量
+    if (!fp) {
+      const translateY = padToTop - this.overflow;
+      this.startItem.scrolled = this.startItem.height - this.overflow;
+      this.list.style.setProperty('transform', `translate3d(0,${-translateY}px,0)`);
     }
     console.log('-----------------------------------------------');
-    
-    console.log('fix', {maxDtY: this.maxDtY, minDtY: this.minDtY});
+
+    console.log('fix', { maxDtY: this.maxDtY, minDtY: this.minDtY });
   };
   renderHeight = 0;
 
   calcList(totalStr: string) {
     try {
-      const buffer = this.getProp('buffer');
+      const pad = this.getProp('pad');
       const total = this.getProp('total');
       // 列表高度 依赖 data
       const { end } = this.calcEnd(0, this.wrapperHeight);
-      this.end = Math.min(end + buffer + 1, total);
+      this.end = Math.min(end + 1, total);
+      this.padEnd = Math.min(end + pad + 1, total);
       this.emitSliceAndFix();
     } catch (error) {
       console.log('total未设置值', totalStr, error);
@@ -289,71 +301,136 @@ export class AutoWcScroll extends HTMLElement {
    * TODO: 计算
    * 计算从某位置开始，需要几项能填满目标高度
    */
+  calcStart = (from: number, tHeight: number) => {
+    const itemHeight = this.getProp('itemHeight');
+    let i = from;
+    /** 这一项刚好填满 */
+    let start: number;
+    let remain: number;
+    let overflow: number;
+
+    while (0 <= i) {
+      // 在此区间能拿到真实高度
+      if (i >= this.memo.padStart && i < this.memo.padEnd) {
+        const realHeight = this.memoHeight.get(i);
+        if (realHeight >= tHeight) {
+          overflow = realHeight - tHeight;
+          remain = tHeight;
+          start = i;
+          break;
+        } else {
+          tHeight -= realHeight;
+        }
+        i--;
+        continue;
+      }
+
+      if (i < this.memo.padStart) {
+        // [0, i] 是虚拟项
+        const virtualCount = i + 1;
+        // 需要 x 项填满
+        const x = Math.ceil(tHeight / itemHeight);
+        if (virtualCount >= x) {
+          overflow = x * itemHeight - tHeight;
+          remain = itemHeight - overflow;
+          start = i - x + 1;
+          break;
+        }
+        // 不够填满
+        else {
+          tHeight -= virtualCount * itemHeight;
+        }
+        i = -1;
+        continue;
+      }
+
+      //  this.memo.padEnd <= i
+      // [this.memo.padEnd, i] 是虚拟项
+      const virtualCount = i + 1 - this.memo.padEnd;
+      // 需要 x 项填满
+      const x = Math.ceil(tHeight / itemHeight);
+      if (virtualCount >= x) {
+        overflow = x * itemHeight - tHeight;
+        remain = itemHeight - overflow;
+        start = i - x + 1;
+        break;
+      }
+      // 不够填满
+      else {
+        tHeight -= virtualCount * itemHeight;
+      }
+      i = this.memo.padEnd - 1;
+    }
+
+    return {
+      // end 含 -1计算，数组长度极端情况需要更改
+      start: start == null ? start : nature(start),
+      overflow,
+      remain
+    };
+  };
   calcEnd = (from: number, tHeight: number) => {
     const total = this.getProp('total');
     const itemHeight = this.getProp('itemHeight');
     let i = from;
     /** 这一项刚好填满 */
     let end: number;
-    let remain = tHeight;
+    let remain: number;
     let overflow: number;
 
     while (i < total) {
       // 在此区间能拿到真实高度
-      if (i >= this.memoStart && i < this.memoEnd) {
+      if (i >= this.memo.padStart && i < this.memo.padEnd) {
         const realHeight = this.memoHeight.get(i);
-        if (realHeight > remain) {
-          overflow = realHeight - remain;
+        if (realHeight >= tHeight) {
+          overflow = realHeight - tHeight;
+          remain = tHeight;
           end = i;
           break;
         } else {
-          remain -= realHeight;
+          tHeight -= realHeight;
         }
         i++;
         continue;
       }
 
-      if (i < this.memoStart) {
-        // [i, this.memoStart) 是虚拟项
-        const virtualCount = this.memoStart - i;
+      if (i < this.memo.padStart) {
+        // [i, this.memo.padStart) 是虚拟项
+        const virtualCount = this.memo.padStart - i;
         // 需要 x 项填满
-        const x = Math.ceil(remain / itemHeight);
+        const x = Math.ceil(tHeight / itemHeight);
         // 足够填满： i=0, x = 2; i+x=2 => [0,1,2]是3项❌; i+x-1=1 => [0,1]✅
         if (virtualCount >= x) {
-          overflow = x * itemHeight - remain;
-          // remain=0 -> x=0, 需要 max
-          remain = remain - Math.max(x - 1, 0) * itemHeight;
+          overflow = x * itemHeight - tHeight;
+          remain = itemHeight - overflow;
           end = i + x - 1;
           break;
         }
         // 不够填满
         else {
-          remain -= virtualCount * itemHeight;
+          tHeight -= virtualCount * itemHeight;
         }
-        i = this.memoStart;
+        i = this.memo.padStart;
         continue;
       }
 
-      //  i === this.memoEnd
+      // this.memoEnd <= i
       // [i, total) 是虚拟项
       const virtualCount = total - i;
       // 需要 x 项填满
-      const x = Math.ceil(remain / itemHeight);
+      const x = Math.ceil(tHeight / itemHeight);
       // 足够填满： i=0, x = 2; i+x=2 => [0,1,2]是3项❌; i+x-1=1 => [0,1]✅
       if (virtualCount >= x) {
-        overflow = x * itemHeight - remain;
-        // remain=0 -> x=0, 需要 max
-        remain = remain - Math.max(x - 1, 0) * itemHeight;
+        overflow = x * itemHeight - tHeight;
+        remain = itemHeight - overflow;
         end = i + x - 1;
+        break;
       }
       // 不够填满
       else {
-        remain -= virtualCount * itemHeight;
-        end = total - 1;
-        debugger;
-        throw '无法填满';
+        tHeight -= virtualCount * itemHeight;
       }
-      break;
+      i = total;
     }
 
     return {
