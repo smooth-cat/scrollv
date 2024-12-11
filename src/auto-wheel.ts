@@ -12,6 +12,7 @@ const keys = {
 export type Keys = keyof typeof keys;
 
 const keyList: Keys[] = Object.values(keys);
+// @ts-ignore
 export class AutoWcScroll extends HTMLElement {
   static tag = 'wc-scroll';
   constructor() {
@@ -26,17 +27,8 @@ export class AutoWcScroll extends HTMLElement {
   wrapper: HTMLElement;
   list: HTMLElement;
   slotEl: HTMLSlotElement;
-  memoHeight = new Map<number, number>();
   padStart = 0;
   padEnd = 0;
-  // memoStart: number;
-  // memoEnd: number;
-  memo = {
-    start:0,
-    end: 0,
-    padStart:0,
-    padEnd: 0,
-  };
 
   /*----------------- 需计算的属性 -----------------*/
   /** 渲染起始位置 */
@@ -129,20 +121,35 @@ export class AutoWcScroll extends HTMLElement {
     this.observer.observe(this.wrapper);
     this.wrapper.addEventListener('wheel', this.onWheel);
   }
-
+  // callback 是微任务，但 debounce 后是宏任务，因此一定能拿到 fix 的真确信息
   watchResize = debounce<ResizeObserverCallback>(function (this: AutoWcScroll, entries) {
+    const pad = this.getProp('pad');
+    const total = this.getProp('total');
     for (const entry of entries) {
       if (entry.target === this.wrapper) {
-        const itemHeight = this.getProp('itemHeight');
-        const height = entry.contentRect.height;
-        this.wrapperHeight = height;
-        // 下拉高度超过了当前渲染内容的高度，则紧急补上， 注意 renderCount 依赖 wrapperHeight，不能提前更新 wrapperHeight
-        // if (height > (this.renderCount - 1) * itemHeight) {
-        //   this.wrapperHeight = height;
-        //   this.emitSliceAndFix();
-        // } else {
-        //   this.wrapperHeight = height;
-        // }
+        const newHeight = entry.contentRect.height;
+        const oldHeight = this.wrapperHeight;
+        this.wrapperHeight = newHeight;
+        // 容器升高了，maxDtY 减少了
+        const dtContainer = newHeight - oldHeight;
+        this.maxDtY -= dtContainer;
+
+        // 新视口高度 大于 sTop 到最后渲染项的高度需要增加渲染项避免白屏
+        if (newHeight > oldHeight && newHeight > this.topToPadEnd) {
+          // 从结束项开始填充高度差
+          const { end: newEnd } = this.calcEnd(this.end, this.endItem.scrolled + newHeight - oldHeight);
+
+          if (newEnd != null) {
+            this.end = newEnd;
+            this.padEnd = Math.min(this.end + pad + 1, total);
+            this.emitSliceAndFix();
+          }
+          // TODO: newEnd 填不满的可能
+          // 渲染不满的情况，直接触发一个滚动到 maxDtY 的逻辑，强迫滚动至最后一项，还需考虑wrapperHeight变化对 maxDtY 的变化
+          else {
+            this.onWheel({ deltaY: this.maxDtY } as any);
+          }
+        }
       }
     }
   }, 300);
@@ -168,33 +175,22 @@ export class AutoWcScroll extends HTMLElement {
     };
     return pos;
   };
-  sTop = 0;
-  /** 滚动触发时的 delta */
-  deltaTop = 0;
-  startItem = {
-    height: 0,
-    /** 被滚动过的区域 */
-    scrolled: 0
-  };
+
   RATE = 0.5;
+  overflow: number;
   onWheel = (e: WheelEvent) => {
     const scrolled = this.startItem.scrolled;
     const pad = this.getProp('pad');
     const total = this.getProp('total');
     let dtY = e.deltaY * this.RATE;
     const { minDtY, maxDtY } = this;
-    // TODO: 补充 startPad
     dtY = Math.min(Math.max(minDtY, dtY), maxDtY);
-    
-
-    this.sTop += dtY;
-
     // 向下滑动
     if (dtY >= 0) {
       const { end: start = 0, remain, overflow } = this.calcEnd(this.memo.start, scrolled + dtY);
       const screen = remain + this.wrapperHeight;
       const { end = total } = this.calcEnd(start, screen);
- 
+
       this.overflow = overflow;
       this.start = start;
       this.padStart = nature(start - pad);
@@ -206,11 +202,11 @@ export class AutoWcScroll extends HTMLElement {
 
     const preOverflow = this.overflow;
     //  向上滑动, remain 和 overflow 是相反的，overflow 表示被 sTop 遮盖的部分，remain 表示第一项露出的部分
-    const { start=0, remain, overflow } = this.calcStart(this.memo.start, -dtY + preOverflow);
-    // TODO: 入过新的第一项是虚拟项，算出的 end 会不准
+    const { start = 0, remain, overflow } = this.calcStart(this.memo.start, -dtY + preOverflow);
+    // TODO: 如果新的第一项是虚拟项，算出的 end 会不准
     const screen = overflow + this.wrapperHeight;
     const { end = total } = this.calcEnd(start, screen);
-   
+
     this.overflow = remain;
     this.start = start;
     this.padStart = nature(start - pad);
@@ -220,10 +216,27 @@ export class AutoWcScroll extends HTMLElement {
     return;
   };
 
-  overflow: number;
+  startItem = {
+    height: 0,
+    /** 被滚动过的区域 */
+    scrolled: 0
+  };
+  endItem = {
+    height: 0,
+    /** 被滚动过的区域 */
+    scrolled: 0
+  };
+  topToPadEnd: number;
   minDtY: number;
   maxDtY: number;
-
+  memo = {
+    start: 0,
+    end: 0,
+    padStart: 0,
+    padEnd: 0,
+  };
+  elToI = new Map<Element, number>();
+  memoHeight = new Map<number, number>();
   fix = () => {
     const total = this.getProp('total');
     const itemHeight = this.getProp('itemHeight');
@@ -232,32 +245,44 @@ export class AutoWcScroll extends HTMLElement {
     const fp = this.overflow == null;
 
     this.memoHeight.clear();
+    this.elToI.forEach((_, el) => this.itemObs.unobserve(el))
+    this.elToI.clear();
 
-    let renderHeight = 0;
-    const startItemIdx = this.start - this.padStart
+    const startItemIdx = this.start - this.padStart;
+    const endItemIdx = this.end - this.padStart;
     this.startItem.height = items[startItemIdx]?.getBoundingClientRect().height || 0;
+    this.endItem.height = items[endItemIdx]?.getBoundingClientRect().height || 0;
     /** 从 scrollTop 到 end 的距离 */
     let topToPadEnd = 0;
     let padToTop = 0;
+    /** end 项露出的部分 */
+    let endScrolled = 0;
     for (let i = this.padStart, j = 0; i < this.padEnd; i++, j++) {
-      const iRealHeight = items[j].getBoundingClientRect().height;
-      renderHeight += iRealHeight;
+      const it = items[j];
+      this.elToI.set(it, i);
+      this.itemObs.observe(it);
+      const iRealHeight = it.getBoundingClientRect().height;
       this.memoHeight.set(i, iRealHeight);
-      if(i >= this.start) {
+      if (i >= this.start) {
         topToPadEnd += i === this.start ? this.overflow ?? iRealHeight : iRealHeight;
+        if (i === nature(this.end - 1)) {
+          endScrolled = this.wrapperHeight - topToPadEnd;
+        }
       }
-      if(i <= this.start) {
+      if (i <= this.start) {
         padToTop += iRealHeight;
       }
     }
-    this.renderHeight = renderHeight;
+    this.endItem.scrolled = endScrolled;
     this.memo = {
       padStart: this.padStart,
       padEnd: this.padEnd,
       start: this.start,
       end: this.end,
-    }
+    };
 
+    /** 高度重构后需要计算 */
+    this.topToPadEnd = topToPadEnd;
     /**可向下移动的最大距离 = 视口底部 到 总内容的最后一项
      * = (sTop 到 最后一项) - 视口高度
      * = (sTop 到 end) + (end 到 最后一项) - 视口高度
@@ -270,7 +295,7 @@ export class AutoWcScroll extends HTMLElement {
      * = [0, padStart) 虚拟项 + [padStart, start] 真实项 - overflow；
      * 首屏 start 项的 overflow 是一整项
      */
-    const minDtY = -(this.padStart * itemHeight + padToTop - (this.overflow ?? this.startItem.height))
+    const minDtY = -(this.padStart * itemHeight + padToTop - (this.overflow ?? this.startItem.height));
     this.minDtY = minDtY;
     // 非首屏设置偏移量
     if (!fp) {
@@ -282,7 +307,6 @@ export class AutoWcScroll extends HTMLElement {
 
     console.log('fix', { maxDtY: this.maxDtY, minDtY: this.minDtY });
   };
-  renderHeight = 0;
 
   calcList(totalStr: string) {
     try {
@@ -290,7 +314,7 @@ export class AutoWcScroll extends HTMLElement {
       const total = this.getProp('total');
       // 列表高度 依赖 data
       const { end } = this.calcEnd(0, this.wrapperHeight);
-      this.end = Math.min(end + 1, total);
+      this.end = Math.min(end, total);
       this.padEnd = Math.min(end + pad + 1, total);
       this.emitSliceAndFix();
     } catch (error) {
@@ -451,11 +475,58 @@ export class AutoWcScroll extends HTMLElement {
       };
     }
   }
+
+  itemResize(entries: ResizeObserverEntry[]) {
+    const total = this.getProp('total');
+    let start = 0;
+    let end = total;
+    for (const entry of entries) {
+      const el = entry.target;
+      const i = this.elToI.get(el);
+      if(i != null) continue;
+
+      if(i < start) {
+        start = i;
+      }
+      if(i > end) {
+        end = i;
+      }
+      this.memoHeight.set(i, entry.contentRect.height);
+    }
+
+    /**
+     * 仅 memo.start 左边的项变化，只需要修改 translateY, minDtY
+     * 仅 memo.end 右边的项变化，只需要修改 maxDtY topToPadEnd
+     * TODO: 更新变形后的memo信息
+     */
+
+
+    // startItem = {
+    //   height: 0,
+    //   /** 被滚动过的区域 */
+    //   scrolled: 0
+    // };
+    // endItem = {
+    //   height: 0,
+    //   /** 被滚动过的区域 */
+    //   scrolled: 0
+    // };
+    // topToPadEnd: number;
+    // minDtY: number;
+    // maxDtY: number;
+    // memo = {
+    //   start: 0,
+    //   end: 0,
+    //   padStart: 0,
+    //   padEnd: 0,
+    // };
+  }
+
   // TODO: 销毁时取消所有监听器
   observer = new ResizeObserver(this.watchResize.bind(this));
+  itemObs = new ResizeObserver(this.itemResize.bind(this));
 }
 
-
-function nature (num: number) {
+function nature(num: number) {
   return Math.max(num, 0);
 }
