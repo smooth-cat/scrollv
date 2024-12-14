@@ -234,8 +234,14 @@ export class AutoWcScroll extends HTMLElement {
       this.memoHeight.set(i, iRealHeight);
       if (i >= this.start) {
         topToPadEnd += i === this.start ? this.overflow ?? iRealHeight : iRealHeight;
-        if (i === nature(this.end - 1)) {
-          endScrolled = this.wrapperHeight - topToPadEnd;
+        if (i === this.end) {
+          // 能够填满
+          if(topToPadEnd >= this.wrapperHeight) {
+            endScrolled = iRealHeight - (topToPadEnd - this.wrapperHeight);
+          } 
+          else {
+            endScrolled = iRealHeight;
+          }
         }
       }
       if (i <= this.start) {
@@ -446,7 +452,7 @@ export class AutoWcScroll extends HTMLElement {
   }
 
   // callback 是微任务，但 debounce 后是宏任务，因此一定能拿到 fix 的真确信息
-  watchResize = debounce<ResizeObserverCallback>(function (this: AutoWcScroll, entries) {
+  wrapperResize = debounce<ResizeObserverCallback>(function (this: AutoWcScroll, entries) {
     const pad = this.getProp('pad');
     const total = this.getProp('total');
     for (const entry of entries) {
@@ -457,7 +463,6 @@ export class AutoWcScroll extends HTMLElement {
         // 容器升高了，maxDtY 减少了
         const dtContainer = newHeight - oldHeight;
         this.maxDtY -= dtContainer;
-
         // 新视口高度 大于 sTop 到最后渲染项的高度需要增加渲染项避免白屏
         if (newHeight > oldHeight && newHeight > this.topToPadEnd) {
           const { end: newEnd } = this.calcEnd(this.memo.end, this.endItem.scrolled + dtContainer);
@@ -467,11 +472,17 @@ export class AutoWcScroll extends HTMLElement {
             this.padEnd = Math.min(this.end + pad + 1, total);
             this.emitSliceAndFix();
           }
-          // TODO: newEnd 填不满的可能
           // 渲染不满的情况，直接触发一个滚动到 maxDtY 的逻辑，强迫滚动至最后一项，还需考虑wrapperHeight变化对 maxDtY 的变化
           else {
             this.onWheel({ deltaY: this.maxDtY, rate: 1 } as any);
           }
+        }
+        // 重设 memo.end、endItem
+        else {
+          const { end: newEnd, remain } = this.calcEnd(this.memo.start, this.startItem.scrolled + newHeight);
+          this.end = newEnd;
+          this.endItem.scrolled = remain;
+          this.endItem.height = this.memoHeight.get(newEnd);
         }
       }
     }
@@ -549,28 +560,33 @@ export class AutoWcScroll extends HTMLElement {
         this.topToPadEnd += dtVisual + dtSuffix;
       }
 
+      // TODO: 不论是否触发 fix 都应该重设 memo.end、memo.padEnd、endItem
       // 从 start 开始计算
       if (needRerender) {
-        const { end: newEnd } = this.calcEnd(this.memo.start, this.startItem.scrolled + this.wrapperHeight + this.maxDtY);
+        const { end: newEnd } = this.calcEnd(this.memo.start, this.startItem.scrolled + this.wrapperHeight);
         if (newEnd != null) {
           this.end = newEnd;
           this.padEnd = Math.min(this.end + pad + 1, total);
           this.emitSliceAndFix();
         }
-        // TODO: newEnd 填不满的可能
         // 渲染不满的情况，需要向上滚动 padEnd - 屏幕底部 的距离
         else {
-          this.onWheel({ deltaY: dtVisual + dtSuffix, rate: 1 } as any);
+          this.onWheel({ deltaY: this.topToPadEnd - this.wrapperHeight, rate: 1 } as any);
         }
+        return;
       }
+
+      // 不需要 rerender 说明一定够填满，重新计算最后一项即可
+      if(dtVisual) {
+        const { end: newEnd, remain } = this.calcEnd(this.memo.start, this.startItem.scrolled + this.wrapperHeight);
+        this.memo.end = newEnd;
+        this.memo.padEnd = Math.min(this.end + pad + 1, total);
+        this.endItem.scrolled = remain;
+        this.endItem.height = this.memoHeight.get(newEnd);
+      }
+
       // 不重置的原因是 第一项的 top 是固定的 scrolled 是不变的
       // startItem = {
-      //   height: 0,
-      //   /** 被滚动过的区域 */
-      //   scrolled: 0
-      // };
-      // 不重置的原因是，目前只有 wrapperResize 会使用，
-      // endItem = {
       //   height: 0,
       //   /** 被滚动过的区域 */
       //   scrolled: 0
@@ -578,15 +594,13 @@ export class AutoWcScroll extends HTMLElement {
       // start 是不变的，end 也只在 Resize 中使用
       // memo = {
       //   start: 0,
-      //   end: 0,
       //   padStart: 0,
-      //   padEnd: 0,
       // };
     });
   }
 
   // TODO: 销毁时取消所有监听器
-  wrapperObs = new ResizeObserver(this.watchResize.bind(this));
+  wrapperObs = new ResizeObserver(this.wrapperResize.bind(this));
   itemObs = new ResizeObserver(this.itemResize.bind(this));
 }
 
