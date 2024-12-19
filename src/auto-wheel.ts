@@ -1,4 +1,5 @@
-import { BaseEvent } from './event';
+import { InitOrder, InternalEvent, Order } from './auto-wheel-decorator';
+import { BaseEvent, EventMode, Func } from './event';
 import { debounce, Events, macro } from './util';
 
 const SLICE_EVENT = 'slice';
@@ -11,8 +12,12 @@ const keys = {
 
 export type Keys = keyof typeof keys;
 
-const keyList: Keys[] = Object.values(keys);
-// @ts-ignore
+type IPos = {
+  start: number,
+  end: number,
+  filed: boolean
+}
+@InitOrder
 export class AutoWcScroll extends HTMLElement {
   static tag = 'wc-scroll';
   constructor() {
@@ -29,6 +34,7 @@ export class AutoWcScroll extends HTMLElement {
   slotEl: HTMLSlotElement;
   padStart = 0;
   padEnd = 0;
+  connectedPos: IPos;
 
   /*----------------- 需计算的属性 -----------------*/
   /** 渲染起始位置 */
@@ -49,8 +55,8 @@ export class AutoWcScroll extends HTMLElement {
   template = document.createElement(`template`);
 
   /** append 🪝 */
+  @Order(InternalEvent.Connected)
   connectedCallback() {
-    console.log('已创建');
     const id = this.attributes.getNamedItem('id')?.value;
     this.watchDoms();
     Events.emit('init', id, this);
@@ -60,9 +66,9 @@ export class AutoWcScroll extends HTMLElement {
 
   /** setAttribute 和 innerHTML 🪝 */
   attributeChangedCallback(name, _, newValue) {
-    if (name === 'total') {
-      this.calcList(newValue);
-    }
+    // if (name === 'total') {
+    //   this.calcList(newValue);
+    // }
   }
 
   onSlice = (fn: (pos: { start: number; end: number }) => void) => {
@@ -106,8 +112,7 @@ export class AutoWcScroll extends HTMLElement {
   ): void {
     super.addEventListener(type, listener, options);
     if (type === SLICE_EVENT && this.isConnected) {
-      const pos = this.createPos();
-      const event = new CustomEvent(SLICE_EVENT, { detail: pos });
+      const event = new CustomEvent(SLICE_EVENT, { detail: this.connectedPos });
       this.dispatchEvent(event);
     }
   }
@@ -119,21 +124,22 @@ export class AutoWcScroll extends HTMLElement {
     this.slotEl = this.shadow.getElementById('slot') as any;
     this.wrapperHeight = this.wrapper.offsetHeight;
     this.wrapperObs.observe(this.wrapper);
-    this.wrapper.addEventListener('wheel', this.onWheel, { passive: false });
+    this.wrapper.addEventListener('wheel', this.onWheel.bind(this), { passive: false });
   }
-
-  emitSliceAndFix() {
-    const pos = this.createPos();
+  fixId = 0;
+  emitSliceAndFix(pos?: IPos) {
+    pos = pos || this.createPos(++this.fixId);
     this.e.emit(SLICE_EVENT, pos);
   }
-  createPos = () => {
+  createPos = (fixId: number) => {
+    console.log(`post-fix-${fixId}`);
     const that = this;
     const start = that.padStart;
     const end = that.padEnd;
     const pos = {
       get start() {
         if (!this.filed) {
-          requestAnimationFrame(that.fix);
+          requestAnimationFrame(() => that.fix(fixId));
           this.filed = true;
         }
         return start;
@@ -146,7 +152,8 @@ export class AutoWcScroll extends HTMLElement {
 
   RATE = 0.5;
   overflow: number;
-  onWheel = (e: WheelEvent) => {
+  @Order(InternalEvent.Scroll)
+  onWheel(e: WheelEvent) {
     const rate = e['rate'] ?? this.RATE;
     const scrolled = this.startItem.scrolled;
     const pad = this.getProp('pad');
@@ -183,7 +190,7 @@ export class AutoWcScroll extends HTMLElement {
     this.padEnd = Math.min(this.end + pad + 1, total);
     this.emitSliceAndFix();
     return;
-  };
+  }
 
   startItem = {
     height: 0,
@@ -206,7 +213,11 @@ export class AutoWcScroll extends HTMLElement {
   };
   elToI = new Map<Element, number>();
   memoHeight = new Map<number, number>();
-  fix = () => {
+
+  @Order(InternalEvent.Fix)
+  fix(fixId: number) {
+    console.log(`RAF-${fixId}`);
+    console.log(`----------------------------------`);
     const total = this.getProp('total');
     const itemHeight = this.getProp('itemHeight');
     const items = this.slotEl.assignedElements();
@@ -236,10 +247,9 @@ export class AutoWcScroll extends HTMLElement {
         topToPadEnd += i === this.start ? this.overflow ?? iRealHeight : iRealHeight;
         if (i === this.end) {
           // 能够填满
-          if(topToPadEnd >= this.wrapperHeight) {
+          if (topToPadEnd >= this.wrapperHeight) {
             endScrolled = iRealHeight - (topToPadEnd - this.wrapperHeight);
-          } 
-          else {
+          } else {
             endScrolled = iRealHeight;
           }
         }
@@ -278,10 +288,9 @@ export class AutoWcScroll extends HTMLElement {
       this.startItem.scrolled = this.startItem.height - this.overflow;
       this.list.style.setProperty('transform', `translate3d(0,${-translateY}px,0)`);
     }
-    console.log('-----------------------------------------------');
 
-    console.log('fix', { maxDtY: this.maxDtY, minDtY: this.minDtY });
-  };
+    // console.log('fix', { maxDtY: this.maxDtY, minDtY: this.minDtY });
+  }
 
   calcList(totalStr: string) {
     try {
@@ -291,7 +300,8 @@ export class AutoWcScroll extends HTMLElement {
       const { end } = this.calcEnd(0, this.wrapperHeight);
       this.end = Math.min(end, total);
       this.padEnd = Math.min(end + pad + 1, total);
-      this.emitSliceAndFix();
+      this.connectedPos = this.createPos(++this.fixId);
+      this.emitSliceAndFix(this.connectedPos);
     } catch (error) {
       console.log('total未设置值', totalStr, error);
     }
@@ -450,6 +460,25 @@ export class AutoWcScroll extends HTMLElement {
       };
     }
   }
+  timeout = 600;
+  // TODO: 滚动过程中又触发了其他滚动
+  aniScroll(dt: number) {
+    const times = Math.ceil(this.timeout/16);
+    const absDt = Math.abs(dt);
+    const step =  Number((absDt / times).toFixed(2));
+    let realTimes = Math.floor(absDt / step);
+    const last = absDt - realTimes * step;
+    if(last) realTimes++;
+    this._doScroll(realTimes, absDt < 0, step,last)
+  }
+  _doScroll = (remainTimes: number, isNegative: boolean, step: number, last?: number) => {
+    let scrollValue = step;
+    if (remainTimes === 1 && last) scrollValue = last;
+    this.onWheel({ deltaY: isNegative ? -scrollValue : scrollValue, rate: 1 } as any);
+    remainTimes--;
+    if (remainTimes === 0) return;
+    requestAnimationFrame(() => this._doScroll(remainTimes, isNegative, step, last));
+  };
 
   // callback 是微任务，但 debounce 后是宏任务，因此一定能拿到 fix 的真确信息
   wrapperResize = debounce<ResizeObserverCallback>(function (this: AutoWcScroll, entries) {
@@ -488,7 +517,6 @@ export class AutoWcScroll extends HTMLElement {
     }
   }, 300);
 
-
   itemResize(entries: ResizeObserverEntry[]) {
     const shouldRerender = (stackDt: number) => {
       const { topToPadEnd, wrapperHeight } = this;
@@ -518,7 +546,7 @@ export class AutoWcScroll extends HTMLElement {
         if (oldHeight === newHeight || newHeight === 0) continue;
         hasResize = true;
         this.memoHeight.set(i, newHeight);
-        console.log(`${i}项高度变化 ${oldHeight} -> ${newHeight}`);
+        // console.log(`${i}项高度变化 ${oldHeight} -> ${newHeight}`);
         if (i < (minI ?? Infinity)) {
           minI = i;
         }
@@ -577,7 +605,7 @@ export class AutoWcScroll extends HTMLElement {
       }
 
       // 不需要 rerender 说明一定够填满，重新计算最后一项即可
-      if(dtVisual) {
+      if (dtVisual) {
         const { end: newEnd, remain } = this.calcEnd(this.memo.start, this.startItem.scrolled + this.wrapperHeight);
         this.memo.end = newEnd;
         this.memo.padEnd = Math.min(this.end + pad + 1, total);

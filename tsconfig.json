@@ -10,6 +10,7 @@
     "skipLibCheck": true /* Skip type checking of declaration files. */,
     "outDir": "dist",
     "declaration": true,
+    "experimentalDecorators": true
   },
   "exclude": ["node_modules", "dist"],
   "include": ["src"],
