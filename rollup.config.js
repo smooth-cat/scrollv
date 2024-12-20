@@ -3,8 +3,10 @@ import commonjs from '@rollup/plugin-commonjs';
 import RollupTypescript from 'rollup-plugin-typescript2'
 import pkg from './package.json';
 import NodePath from 'path'
+import strip from '@rollup/plugin-strip';
 const resolveFile = path => NodePath.resolve(__dirname, path);
 const bigCamel = (name) => name.split('-').map(it => it[0].toUpperCase() + it.slice(1)).join(''); 
+const ENV = process.env.ENV;
 
 export default [
 	// browser-friendly UMD build
@@ -20,6 +22,10 @@ export default [
 			commonjs(), // so Rollup can convert `ms` to an ES module
       RollupTypescript({
         tsconfig: resolveFile('tsconfig.rollup.json')
+      }),
+      ENV === 'prod' && strip({
+        include: ['**/*.ts','**/*.js'],
+        functions: [ 'console.log' ],
       }),
 		]
 	},
@@ -38,6 +44,10 @@ export default [
     plugins: [
       RollupTypescript({
         tsconfig: resolveFile('tsconfig.rollup.json')
+      }),
+      ENV === 'prod' && strip({
+        include: ['**/*.ts','**/*.js'],
+        functions: [ 'console.log' ],
       }),
 		]
 	}

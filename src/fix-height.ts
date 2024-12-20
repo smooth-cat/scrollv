@@ -13,7 +13,7 @@ export type Keys = keyof typeof keys;
 
 const keyList: Keys[] = Object.values(keys);
 export class WcScroll extends HTMLElement {
-  static tag = 'wc-scroll';
+  static tag = 'scrollv';
   /** ctor -> attr -> connected */
   constructor() {
     // 必须首先调用 super 方法, 继承基类

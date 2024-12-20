@@ -29,4 +29,4 @@ export function onInit(id: string, fn: (dom: WcScroll|AutoWcScroll) => void) {
   Events.once('init', handleInit);
 }
 
-define('wc-scroll', AutoWcScroll);
+define('scroll-v', AutoWcScroll);

@@ -1,13 +1,14 @@
 {
-  "name": "wc-scroll",
+  "name": "scrollv",
   "version": "0.0.1",
-  "main": "dist/wc-scroll.cjs.js",
-  "module": "dist/wc-scroll.esm.js",
-  "browser": "dist/wc-scroll.umd.js",
+  "main": "dist/scrollv.cjs.js",
+  "module": "dist/scrollv.esm.js",
+  "browser": "dist/scrollv.umd.js",
   "types": "dist/index.d.ts",
   "devDependencies": {
     "@rollup/plugin-commonjs": "^11.0.1",
     "@rollup/plugin-node-resolve": "^7.0.0",
+    "@rollup/plugin-strip": "^3.0.4",
     "@types/jest": "^29.5.14",
     "@types/jquery": "^3.5.32",
     "@types/node": "^18.15.11",
@@ -24,9 +25,9 @@
   },
   "scripts": {
     "ini": "node scripts/init.js",
-    "build": "rm -rf ./dist && rollup -c",
+    "build": "rm -rf ./dist && ENV=prod rollup -c",
     "pub": "node scripts/publish.js",
-    "dev": "rollup -c -w",
+    "dev": "ENV=dev rollup -c -w",
     "ut": "jest --coverage --watchAll",
     "j": "jest --silent=false"
   },
@@ -41,12 +42,12 @@
   "author": "smooth-cat",
   "repository": {
     "type": "git",
-    "url": "git+git@github.com:smooth-cat/wc-scroll.git"
+    "url": "git+git@github.com:smooth-cat/scrollv.git"
   },
   "bugs": {
-    "url": "https://github.com/smooth-cat/wc-scroll/issues"
+    "url": "https://github.com/smooth-cat/scrollv/issues"
   },
-  "homepage": "https://github.com/smooth-cat/wc-scroll#readme",
+  "homepage": "https://github.com/smooth-cat/scrollv#readme",
   "keyWords": [
     "wc",
     "scroll"

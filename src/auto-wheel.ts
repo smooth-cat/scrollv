@@ -19,7 +19,7 @@ type IPos = {
 }
 @InitOrder
 export class AutoWcScroll extends HTMLElement {
-  static tag = 'wc-scroll';
+  static tag = 'scrollv';
   constructor() {
     // 必须首先调用 super 方法, 继承基类
     super();
