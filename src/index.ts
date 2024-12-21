@@ -1,5 +1,5 @@
-import { AutoWcScroll } from "./auto-wheel";
-import { WcScroll } from "./fix-height";
+import { AutoHeight } from "./auto-wheel";
+import { FixHeight } from "./fix-height";
 import { Events } from "./util";
 
 const defined = {
@@ -14,13 +14,13 @@ export function define(name: string, constructor: CustomElementConstructor, opti
   return customElements.define(name, constructor, options);
 }
 
-export function onInit(id: string, fn: (dom: WcScroll|AutoWcScroll) => void) {
-  const handleInit = (dom: WcScroll|AutoWcScroll) => {
+export function onInit(id: string, fn: (dom: FixHeight|AutoHeight) => void) {
+  const handleInit = (dom: FixHeight|AutoHeight) => {
     console.log('收到init');
     fn(dom);
   }
 
-  handleInit.scheduler = (doCall, _id: string, dom: WcScroll|AutoWcScroll) => {
+  handleInit.scheduler = (doCall, _id: string, dom: FixHeight|AutoHeight) => {
     if(id === _id) {
       doCall(dom);
     }
@@ -29,4 +29,7 @@ export function onInit(id: string, fn: (dom: WcScroll|AutoWcScroll) => void) {
   Events.once('init', handleInit);
 }
 
-define('scroll-v', AutoWcScroll);
+export {
+  AutoHeight,
+  FixHeight,
+}

@@ -45,7 +45,7 @@ type IPos = {
 }
 
 @InitOrder
-export class AutoWcScroll extends HTMLElement {
+export class AutoHeight extends HTMLElement {
   static tag = 'scrollv';
   constructor() {
     // 必须首先调用 super 方法, 继承基类
@@ -525,7 +525,7 @@ export class AutoWcScroll extends HTMLElement {
   };
 
   // callback 是微任务，但 debounce 后是宏任务，因此一定能拿到 fix 的真确信息
-  wrapperResize = debounce<ResizeObserverCallback>(function (this: AutoWcScroll, entries) {
+  wrapperResize = debounce<ResizeObserverCallback>(function (this: AutoHeight, entries) {
     const pad = this.getProp('pad');
     const total = this.getProp('total');
     for (const entry of entries) {

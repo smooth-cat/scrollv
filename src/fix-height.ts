@@ -12,7 +12,7 @@ const keys = {
 export type Keys = keyof typeof keys;
 
 const keyList: Keys[] = Object.values(keys);
-export class WcScroll extends HTMLElement {
+export class FixHeight extends HTMLElement {
   static tag = 'scrollv';
   /** ctor -> attr -> connected */
   constructor() {
@@ -127,7 +127,7 @@ export class WcScroll extends HTMLElement {
     this.wrapper.addEventListener('scroll', this.onScroll.bind(this));
   }
 
-  watchResize = debounce<ResizeObserverCallback>(function (this: WcScroll, entries) {
+  watchResize = debounce<ResizeObserverCallback>(function (this: FixHeight, entries) {
     for (const entry of entries) {
       if (entry.target === this.wrapper) {
         const itemHeight = this.getProp('itemHeight');

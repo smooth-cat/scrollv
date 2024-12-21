@@ -1,4 +1,4 @@
-import { AutoWcScroll } from "./auto-wheel";
+import { AutoHeight } from "./auto-wheel";
 import { BaseEvent, EventMode, Func } from "./event";
 export enum InternalEvent {
   /** 初始化 */
@@ -61,11 +61,11 @@ function createOrderCenter() {
  * 这是为了 wheel2 能拿到正确的上一帧缓存信息
   */
 export function Order(event: InternalEvent) {
-  return function (target: AutoWcScroll, key: string) { 
+  return function (target: AutoHeight, key: string) { 
     const raw = target[key];
     const rawKey = `__${key}`;
     // 代理函数通过事件中心触发原始函数
-    const proxyFn: Func = function(this: AutoWcScroll, ...args) {
+    const proxyFn: Func = function(this: AutoHeight, ...args) {
       this['__center'].emit(event, ...args);
     };
     target[key] = proxyFn;

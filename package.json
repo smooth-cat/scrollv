@@ -1,6 +1,6 @@
 {
   "name": "scrollv",
-  "version": "0.0.1",
+  "version": "0.0.4",
   "main": "dist/scrollv.cjs.js",
   "module": "dist/scrollv.esm.js",
   "browser": "dist/scrollv.umd.js",
@@ -36,8 +36,8 @@
   ],
   "license": "MIT",
   "keywords": [
-    "smooth",
-    "cat"
+    "scroll",
+    "scrollv"
   ],
   "author": "smooth-cat",
   "repository": {

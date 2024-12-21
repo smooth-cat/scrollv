@@ -15,7 +15,7 @@ exec('pnpm build');
 // 改版本
 pkg.version = newVal;
 fs.writeFileSync(path.resolve(process.cwd(), './package.json'), JSON.stringify(pkg, undefined, 2)+'\n');
-
+console.log('完成version修改');
 try {
   // 发布
   exec('npm publish  --access=public --registry="https://registry.npmjs.com"');
