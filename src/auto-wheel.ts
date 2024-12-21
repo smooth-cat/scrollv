@@ -12,11 +12,38 @@ const keys = {
 
 export type Keys = keyof typeof keys;
 
+
+type BuildAction<T extends Record<any, any>> = {
+  [P in keyof T]: {
+    type: P,
+    payload: T[P],
+  }
+}[keyof T]
+
+type DeltaPayload = { 
+  /** 滚动距离 */
+  dt: number
+}
+type ToItemPayload = { 
+  /** 需要滚动到的项 */
+  index: number 
+}
+
+type IScrollV = {
+  delta: DeltaPayload,
+  toItem: ToItemPayload,
+}
+
+type ScrollVType = keyof IScrollV; 
+
+type Action = BuildAction<IScrollV>;
+
 type IPos = {
   start: number,
   end: number,
   filed: boolean
 }
+
 @InitOrder
 export class AutoWcScroll extends HTMLElement {
   static tag = 'scrollv';
@@ -461,15 +488,32 @@ export class AutoWcScroll extends HTMLElement {
     }
   }
   timeout = 600;
+
   // TODO: 滚动过程中又触发了其他滚动
-  aniScroll(dt: number) {
-    const times = Math.ceil(this.timeout/16);
-    const absDt = Math.abs(dt);
-    const step =  Number((absDt / times).toFixed(2));
-    let realTimes = Math.floor(absDt / step);
-    const last = absDt - realTimes * step;
-    if(last) realTimes++;
-    this._doScroll(realTimes, absDt < 0, step,last)
+  // scrollv(scrollType: 'delta', opt: IScrollV['delta']): void;
+  // scrollv(scrollType: 'toItem', opt: IScrollV['toItem']): void;
+  scrollv<T extends ScrollVType>(type: T, payload: IScrollV[T]) {
+    const action: Action = {
+      type,
+      payload,
+    } as any;
+
+    switch (action.type) {
+      case 'delta':
+        const dt = action.payload.dt;
+        const times = Math.ceil(this.timeout / 16);
+        const absDt = Math.abs(dt);
+        const step = Number((absDt / times).toFixed(2));
+        let realTimes = Math.floor(absDt / step);
+        const last = absDt - realTimes * step;
+        if (last) realTimes++;
+        this._doScroll(realTimes, absDt < 0, step, last);
+        break;
+      case 'toItem':
+        break;
+      default:
+        break;
+    }   
   }
   _doScroll = (remainTimes: number, isNegative: boolean, step: number, last?: number) => {
     let scrollValue = step;
