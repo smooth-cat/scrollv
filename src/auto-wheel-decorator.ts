@@ -1,5 +1,6 @@
 import { AutoHeight } from "./auto-wheel";
 import { BaseEvent, EventMode, Func } from "./event";
+import { cNoop } from "./util";
 export enum InternalEvent {
   /** 初始化 */
   Connected='Connected',
@@ -80,6 +81,7 @@ type ICtor = { new (...args: any[]): any };
 /** 所有和渲染相关的事件通过事件队列按照 渲染+fix 的顺序挨个执行  */
 export function InitOrder<T extends ICtor>(Origin: T) {
   const rawInit = Origin.prototype.init;
+  let center: BaseEvent;
   /**
    * 重写 init 方法，不使用方法装饰器的原因是，
    * 这个装饰器一定要在所有 Order 装饰器执行后执行，
@@ -87,10 +89,24 @@ export function InitOrder<T extends ICtor>(Origin: T) {
    */
   Origin.prototype.init = function() {
     rawInit.call(this);
-    const center = createOrderCenter();
+    center = createOrderCenter();
     this['__center'] = center;
     keyToFnName.forEach((rawKey, event) => {
       center.on(event, this[rawKey].bind(this));
+    })
+  }
+
+  const rawDestroy = Origin.prototype.destroy;
+  Origin.prototype.destroy = function(...args) {
+    const ownKeys = Object.getOwnPropertyNames(Origin.prototype).filter(it => typeof this[it] === 'function');
+    console.log('proto methods', ownKeys);
+
+    center.clear();
+    this['__center'] = undefined;
+    rawDestroy.call(this, ...args);
+
+    ownKeys.forEach((key) => {
+      Origin.prototype[key] = cNoop(key);
     })
   }
 }

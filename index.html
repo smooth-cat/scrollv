@@ -27,22 +27,27 @@
     height: 30px;
   }
 </style>
-<body style="height: 80vh;">
-  <div style="height: 100%; display: flex; flex-direction: column;">
-    <button id="btn" style="flex: none;">滚动</button>
-    <div style="border: 2px solid green; flex: 1; height: 1px;" >
+<body style="height: 80vh; display: flex;">
+  <div style="height: 100%; display: flex; flex-direction: column; width: 400px;">
+    <div>
+      <button id="btn" style="flex: none;">滚动</button>
+      <button id="rollI" style="flex: none;">第i项</button>
+      <button id="switchBtn" style="flex: none;">切换位置</button>
+      <button id="destroyBtn" style="flex: none;">删除</button>
+    </div>
+    <div id="theOne" style="border: 2px solid green; flex: 1; height: 1px;" >
       <scroll-v id="scroll" style="height: 100%;" total="50" itemHeight="200" pad="2">
-      
       </scroll-v>
     </div>
   </div>
+  <div id="another" style="border: 2px solid black; box-sizing: border-box; height: 100%; display: flex; flex-direction: column; width: 400px;"></div>
 </body>
 <script>
   const eventMap = new Map();
   const scroll= document.getElementById('scroll');
   const data = Array.from({length: 50}, (_, i) => ({ expand: true, h5: `第${i}项<br/>${window.Mock.Random.paragraph()}`}))
   scroll.addEventListener('slice', (e) => {
-    const {start, end} = e.detail;
+    const { start, end } = e.detail;
     const html = data.slice(start, end).map(({ h5, expand }, i) => {
       const isSingle = (start+i) % 2 === 1;
       return `<div class="${isSingle ? 'blue' : 'red'} ${expand ?  'expand' : 'shrink' } item">${h5}</div>`
@@ -75,6 +80,19 @@
   })
   btn.addEventListener('click', () => {
     scroll.scrollv('delta', { dt: 1000 })
+  })
+  rollI.addEventListener('click', () => {
+    scroll.scrollv('toItem', { index: 10 })
+  })
+  switchBtn.addEventListener('click', () => {
+    if(theOne.contains(scroll)) {
+      another.appendChild(scroll);
+    } else {
+      theOne.appendChild(scroll);
+    }
+  })
+  destroyBtn.addEventListener('click', () => {
+    scroll.destroy();
   })
 </script>
 </html>

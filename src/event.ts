@@ -37,7 +37,9 @@ export class BaseEvent {
   constructor(private opt: IEventOpt = {}) {
     this.opt = { ...DefaultEventOpt, ...opt };
   }
-
+  scheduler?: IGlobalScheduler;
+  eventQueue: IEventItem[] = [];
+  #status = ProcessStatus.None;
   subMap = new Map<string, Set<Func>>();
   on = (type: string | undefined, fn: Func) => {
     if (type == null) type = ALL;
@@ -57,7 +59,6 @@ export class BaseEvent {
     this.on(type, fn);
   };
 
-  scheduler?: IGlobalScheduler;
   setScheduler: ISetScheduler = (type: string | IGlobalScheduler, scheduler?: Func) => {
     if (typeof type !== 'string') {
       this.scheduler = type;
@@ -89,18 +90,19 @@ export class BaseEvent {
       ? this.emitImmediate(type, ...args)
       : this.emitQueue(type, ...args);
   };
+  
   emitImmediate(type: string, ...args: any[]) {
     const fns = this.subMap.get(type);
     const allSub = this.subMap.get(ALL);
     fns?.forEach((it) => this.callSub(it, fns, args));
     allSub?.forEach((it) => this.callSub(it, allSub, args));
   }
+
   emitQueue(type: string, ...args: any[]) {
     this.eventQueue.push({ type, args });
     this.process();
   }
 
-  #status = ProcessStatus.None;
   pause = () => (this.#status = ProcessStatus.Paused);
   start = () => {
     this.#status = ProcessStatus.None;
@@ -140,7 +142,7 @@ export class BaseEvent {
     this.#status = ProcessStatus.None;
   };
 
-  eventQueue: IEventItem[] = [];
+
   dispatchEvent = (iList: number[]) => {
     // 从大到小排序
     iList.sort((a, b) => b - a);
@@ -156,6 +158,7 @@ export class BaseEvent {
   clear = () => {
     this.subMap.clear();
     this.eventQueue = [];
+    this.scheduler = undefined;
   };
 }
 
