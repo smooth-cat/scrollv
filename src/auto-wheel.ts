@@ -1,4 +1,4 @@
-import { InitOrder, InternalEvent, Order } from './auto-wheel-decorator';
+import { InitQueue, InternalEvent, Queue, BlockQueue, UnBlockQueue } from './auto-wheel-decorator';
 import { BaseEvent, EventMode, Func } from './event';
 import { FrameScope, debounce, Events, macro, cNoop } from './util';
 
@@ -43,7 +43,7 @@ type IPos = {
   filed: boolean;
 };
 
-@InitOrder
+@InitQueue()
 export class AutoHeight extends HTMLElement {
   static tag = 'scrollv';
   constructor() {
@@ -72,7 +72,7 @@ export class AutoHeight extends HTMLElement {
   firstConnected = true;
 
   /** append 🪝 */
-  @Order(InternalEvent.Connected)
+  @Queue(InternalEvent.Connected)
   connectedCallback() {
     if (!this.firstConnected) return;
     console.log('connected isConnected', this.isConnected);
@@ -174,8 +174,12 @@ export class AutoHeight extends HTMLElement {
     this.slotEl = this.shadow.getElementById('slot') as any;
     this.wrapperHeight = this.wrapper.offsetHeight;
     this.wrapperObs.observe(this.wrapper);
-    this.wrapper.addEventListener('wheel', this.onWheel.bind(this), { passive: false });
+    this.wrapper.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      this.onWheel(e);
+    }, { passive: false });
   }
+  @BlockQueue()
   emitSliceAndFix(isFirstPaint = false) {
     const pos = this.createPos(++this.fixId);
     if (isFirstPaint) {
@@ -204,7 +208,7 @@ export class AutoHeight extends HTMLElement {
 
   RATE = 0.5;
   overflow: number;
-  @Order(InternalEvent.Scroll)
+  @Queue(InternalEvent.Scroll)
   onWheel(e: WheelEvent) {
     const rate = e['rate'] ?? this.RATE;
     const scrolled = this.startItem.scrolled;
@@ -265,9 +269,16 @@ export class AutoHeight extends HTMLElement {
   };
   elToI = new Map<Element, number>();
   memoHeight = new Map<number, number>();
+  fixContext: {
+    type: string;
+    payload: any;
+  }
 
-  @Order(InternalEvent.Fix)
+  @UnBlockQueue()
   fix(fixId: number) {
+    if(this.fixId !== fixId) {
+      console.warn('未按顺序处理Queue中的事件', { fixId, currentId: this.fixId })
+    }
     console.log(`RAF-${fixId}`);
     console.log(`----------------------------------`);
     const total = this.getProp('total');
@@ -285,7 +296,7 @@ export class AutoHeight extends HTMLElement {
 
     const startItemHeight = (this.startItem.height = items[startItemIdx]?.getBoundingClientRect().height || 0);
     /**
-     * 通过 api 滚动时
+     * 通过 api 向上滚动时
      * 如果正好滚动高度为一个虚拟项高度，
      * 则认为这个项被滚动过了一个真实项的高度
      */
@@ -352,6 +363,26 @@ export class AutoHeight extends HTMLElement {
     }
 
     // console.log('fix', { maxDtY: this.maxDtY, minDtY: this.minDtY });
+    this.extraFix();
+  }
+
+  extraFix() {
+    if(!this.fixContext) return;
+    const { type, payload } = this.fixContext
+    switch (type) {
+      case 'scrollToItem':
+        const index = payload;
+        // 如果 index 项在视口内则不需要移动
+        if(this.memo.start <= index && index < this.memo.end) break;
+        const delta = this.calcToItemDelta(index);
+        this['__onWheel']({ deltaY: delta, rate: 1 } as any);
+        this['__center'].pause();
+        break;
+      default:
+        break;
+    }
+
+    this.fixContext = undefined;
   }
 
   calcList(start: number, isFirstPaint = false) {
@@ -545,21 +576,29 @@ export class AutoHeight extends HTMLElement {
         this._doScroll(realTimes, absDt < 0, step, last);
         break;
       case 'toItem':
-        const index = action.payload.index;
-        const mStart = this.memo.start;
-        let delta: number;
-        if (mStart < index) {
-          const stack = this.getStack(mStart, index);
-          delta = stack - this.startItem.scrolled;
-        } else {
-          const stack = this.getStack(index, mStart);
-          delta = -(stack + this.startItem.scrolled);
-        }
+        const delta = this.calcToItemDelta(action.payload.index);
         this.onWheel({ deltaY: delta, rate: 1 } as any);
+        this.fixContext = {
+          type: 'scrollToItem',
+          payload: action.payload.index,
+        }
         break;
       default:
         break;
     }
+  }
+
+  calcToItemDelta (index: number) {
+    const mStart = this.memo.start;
+    let delta: number;
+    if (mStart < index) {
+      const stack = this.getStack(mStart, index);
+      delta = stack - this.startItem.scrolled;
+    } else {
+      const stack = this.getStack(index, mStart);
+      delta = -(stack + this.startItem.scrolled);
+    }
+    return delta;
   }
 
   getStack(start: number, end: number) {
@@ -592,7 +631,7 @@ export class AutoHeight extends HTMLElement {
   };
 
   // callback 是微任务，但 debounce 后是宏任务，因此一定能拿到 fix 的真确信息
-  @Order(InternalEvent.WrapperResize)
+  @Queue(InternalEvent.WrapperResize)
   wrapperResize(entries: ResizeObserverEntry[]) {
     console.log('wrapper 大小发生变化');
     const pad = this.getProp('pad');
@@ -616,7 +655,7 @@ export class AutoHeight extends HTMLElement {
           }
           // 渲染不满的情况，直接触发一个滚动到 maxDtY 的逻辑，强迫滚动至最后一项，还需考虑wrapperHeight变化对 maxDtY 的变化
           else {
-            this.onWheel({ deltaY: this.maxDtY, rate: 1 } as any);
+            this['__onWheel']({ deltaY: this.maxDtY, rate: 1 } as any);
           }
         }
         // 重设 memo.end、endItem
@@ -631,8 +670,9 @@ export class AutoHeight extends HTMLElement {
   }
 
   // TODO: 修复移动到宽度不同的容器时，内部元素高度自动变化，translateY 计算不正确
-  @Order(InternalEvent.ItemResize)
+  @Queue(InternalEvent.ItemResize)
   itemResize(entries: ResizeObserverEntry[]) {
+    console.log('itemResize');
     const shouldRerender = (stackDt: number) => {
       const { topToPadEnd, wrapperHeight } = this;
       const resized = topToPadEnd + stackDt;
@@ -705,7 +745,6 @@ export class AutoHeight extends HTMLElement {
     // TODO: 不论是否触发 fix 都应该重设 memo.end、memo.padEnd、endItem
     // 从 start 开始计算
     if (needRerender) {
-      console.log('itemResize');
       const { end: newEnd } = this.calcEnd(this.memo.start, this.startItem.scrolled + this.wrapperHeight);
       if (newEnd != null) {
         this.end = newEnd;
@@ -714,7 +753,7 @@ export class AutoHeight extends HTMLElement {
       }
       // 渲染不满的情况，需要向上滚动 padEnd - 屏幕底部 的距离
       else {
-        this.onWheel({ deltaY: this.topToPadEnd - this.wrapperHeight, rate: 1 } as any);
+        this['__onWheel']({ deltaY: this.topToPadEnd - this.wrapperHeight, rate: 1 } as any);
       }
       return;
     }

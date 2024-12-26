@@ -39,7 +39,7 @@ export class BaseEvent {
   }
   scheduler?: IGlobalScheduler;
   eventQueue: IEventItem[] = [];
-  #status = ProcessStatus.None;
+  status = ProcessStatus.None;
   subMap = new Map<string, Set<Func>>();
   on = (type: string | undefined, fn: Func) => {
     if (type == null) type = ALL;
@@ -103,9 +103,10 @@ export class BaseEvent {
     this.process();
   }
 
-  pause = () => (this.#status = ProcessStatus.Paused);
+  pause = () => (this.status = ProcessStatus.Paused);
+  unPause = () => (this.status = ProcessStatus.None);
   start = () => {
-    this.#status = ProcessStatus.None;
+    this.status = ProcessStatus.None;
     this.processQueue();
   };
 
@@ -121,11 +122,9 @@ export class BaseEvent {
   };
 
   processQueue = () => {
-    // 正在处理，或者挂起，则直接返回
-    if (this.#status > ProcessStatus.None) {
-      return;
-    }
-    this.#status = ProcessStatus.Processing;
+    // 如果是挂起状态则直接结束
+    if (this.status === ProcessStatus.Paused) return;
+    this.status = ProcessStatus.Processing;
 
     let { type, args } = this.eventQueue.shift() || {};
     if (type) {
@@ -138,8 +137,10 @@ export class BaseEvent {
         this.processQueue();
       }
     }
-    // 队列全部处理完成
-    this.#status = ProcessStatus.None;
+    //@ts-ignore 队列全部处理完成，如果执行过程中被 pause 
+    if(this.status !== ProcessStatus.Paused) {
+      this.status = ProcessStatus.None;
+    }
   };
 
 

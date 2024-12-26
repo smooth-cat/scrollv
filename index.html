@@ -31,7 +31,7 @@
   <div style="height: 100%; display: flex; flex-direction: column; width: 400px;">
     <div>
       <button id="btn" style="flex: none;">滚动</button>
-      <button id="rollI" style="flex: none;">第i项</button>
+      <input id="ipt" placeholder="index滚动" style="width: 60px;"/>
       <button id="switchBtn" style="flex: none;">切换位置</button>
       <button id="destroyBtn" style="flex: none;">删除</button>
     </div>
@@ -40,7 +40,7 @@
       </scroll-v>
     </div>
   </div>
-  <div id="another" style="border: 2px solid black; box-sizing: border-box; height: 100%; display: flex; flex-direction: column; width: 400px;"></div>
+  <div id="another" style="border: 2px solid black; box-sizing: border-box; height: 100%; display: flex; flex-direction: column; width: 450px;"></div>
 </body>
 <script>
   const eventMap = new Map();
@@ -80,10 +80,21 @@
   })
   btn.addEventListener('click', () => {
     scroll.scrollv('delta', { dt: 1000 })
-  })
-  rollI.addEventListener('click', () => {
-    scroll.scrollv('toItem', { index: 10 })
-  })
+  });
+
+  ipt.addEventListener('keydown', (e) => {
+    if(e && e.keyCode === 13) {
+      try {
+        const num = parseInt(ipt.value, 10);
+        scroll.scrollv('toItem', { index: num })
+      } catch (err) {
+        console.error(`转换${ipt.value}失败`, err);
+      } finally {
+        ipt.value = '';
+      }
+    }
+  });
+
   switchBtn.addEventListener('click', () => {
     if(theOne.contains(scroll)) {
       another.appendChild(scroll);
