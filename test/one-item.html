@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Document</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Mock.js/1.0.1-beta1/mock.js" integrity="sha512-siqHsq6D0/vqgBA3kpVxCyC9whF4TyyegsJcBOCyE6Z/GkG0++Z8RPTIQV5Xw8GB6a1m9xbmHqNdL3/4hNVvZg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-  <script src="./dist/scrollv.umd.js" ></script>
+  <script src="../dist/scrollv.umd.js" ></script>
   <script>Scrollv.define('scroll-v', Scrollv.AutoHeight)</script>
 </head>
 <style>
@@ -21,10 +21,10 @@
     border: 1px solid blue;
   }
   .expand {
-    height: auto;
+    height: 1000px;
   }
-  .shrink {
-    height: 30px;
+  .normal {
+    height: auto;
   }
 </style>
 <body style="height: 80vh; display: flex;">
@@ -34,31 +34,24 @@
       <input id="ipt" placeholder="index滚动" style="width: 60px;"/>
       <button id="switchBtn" style="flex: none;">切换位置</button>
       <button id="destroyBtn" style="flex: none;">删除</button>
-      <button id="foldBtn" style="flex: none;">折叠</button>
-      <button id="expandBtn" style="flex: none;">展开</button>
     </div>
     <div id="theOne" style="border: 2px solid green; flex: 1; height: 1px;" >
-      <scroll-v id="scroll" style="height: 100%;" total="50" itemHeight="30" pad="2">
+      <scroll-v id="scroll" style="height: 100%;" total="1" itemHeight="200" pad="2">
       </scroll-v>
     </div>
   </div>
-  <div style="height: 100%; display: flex; flex-direction: column; width: 450px;">
-    <div>
-      <button style="flex: none;">占位</button>
-    </div>
-    <div id="another" style="border: 2px solid black; flex: 1; height: 1px;" >
-    </div>
-  </div>
+  <div id="another" style="border: 2px solid black; box-sizing: border-box; height: 100%; display: flex; flex-direction: column; width: 450px;"></div>
 </body>
 <script>
   const eventMap = new Map();
   const scroll= document.getElementById('scroll');
-  const data = Array.from({length: 50}, (_, i) => ({ expand: true, h5: `第${i}项<br/>${window.Mock.Random.paragraph()}`}))
+  const data = Array.from({length: 1}, (_, i) => ({ expand: false, h5: `第${i}项<br/>${window.Mock.Random.paragraph(1)}`}))
   scroll.addEventListener('slice', (e) => {
+    
     const { start, end } = e.detail;
     const html = data.slice(start, end).map(({ h5, expand }, i) => {
       const isSingle = (start+i) % 2 === 1;
-      return `<div class="${isSingle ? 'blue' : 'red'} ${expand ?  'expand' : 'shrink' } item">${h5}</div>`
+      return `<div class="${isSingle ? 'blue' : 'red'} ${expand ?  'expand' : 'normal' } item">${h5}</div>`
     }).join('');
     eventMap.forEach((fn, element) => {
       element.removeEventListener('click', fn);
@@ -76,9 +69,9 @@
         const newExpand = !data[j].expand;
         data[j].expand = newExpand;
         if(newExpand) {
-          element.style.setProperty('height', 'auto')
+          element.style.setProperty('height', '1000px')
         } else {
-          element.style.setProperty('height', '30px')
+          element.style.setProperty('height', 'auto')
         }
       };
       element.addEventListener('click', fn);
@@ -112,26 +105,6 @@
   })
   destroyBtn.addEventListener('click', () => {
     scroll.destroy();
-  })
-  foldBtn.addEventListener('click', () => {
-    const its = document.getElementsByClassName('item');
-    for (let i=0;  i < its.length; i++) {
-      const element = its[i];
-      element.style.setProperty('height', '30px')
-    }
-    data.forEach((it) => {
-      it.expand = false;
-    })
-  })
-  expandBtn.addEventListener('click', () => {
-    const its = document.getElementsByClassName('item');
-    for (let i=0;  i < its.length; i++) {
-      const element = its[i];
-      element.style.setProperty('height', 'auto')
-    }
-    data.forEach((it) => {
-      it.expand = true;
-    })
   })
 </script>
 </html>
