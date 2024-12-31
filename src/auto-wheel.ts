@@ -225,13 +225,17 @@ export class AutoHeight extends HTMLElement {
   overflow: number;
   @Queue(InternalEvent.Scroll)
   onWheel(e: WheelEvent) {
-    // TODO: 滚动到底部时不触发更新
     const rate = e['rate'] ?? this.RATE;
     const scrolled = this.startItem.scrolled;
     const pad = this.getProp('pad');
     const total = this.getProp('total');
     let dtY = e.deltaY * rate;
     const { minDtY, maxDtY } = this;
+    // 滚动到 顶|底 部，则不需要做处理
+    if((dtY >= 0 && maxDtY === 0) || (dtY <= 0 && minDtY === 0)) {
+      return;
+    }
+
     dtY = Math.min(Math.max(minDtY, dtY), maxDtY);
     // 向下滑动
     if (dtY >= 0) {
