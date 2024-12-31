@@ -225,6 +225,7 @@ export class AutoHeight extends HTMLElement {
   overflow: number;
   @Queue(InternalEvent.Scroll)
   onWheel(e: WheelEvent) {
+    // TODO: 滚动到底部时不触发更新
     const rate = e['rate'] ?? this.RATE;
     const scrolled = this.startItem.scrolled;
     const pad = this.getProp('pad');

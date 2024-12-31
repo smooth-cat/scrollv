@@ -105,7 +105,6 @@ type ICtor = { new (...args: any[]): any };
 export function InitQueue() {
   return function <T extends ICtor>(Origin: T) {
     const rawInit = Origin.prototype.init;
-    let center: BaseEvent;
     /**
      * 重写 init 方法，不使用方法装饰器的原因是，
      * 这个装饰器一定要在所有 Order 装饰器执行后执行，
@@ -113,10 +112,9 @@ export function InitQueue() {
      */
     Origin.prototype.init = function() {
       rawInit.call(this);
-      center = createBlockCenter();
-      this['__center'] = center;
+      this['__center'] = createBlockCenter();
       eventToFnName.forEach((rawKey, event) => {
-        center.on(event, this[rawKey].bind(this));
+        this['__center'].on(event, this[rawKey].bind(this));
       })
     }
   
@@ -125,12 +123,13 @@ export function InitQueue() {
       const ownKeys = Object.getOwnPropertyNames(Origin.prototype).filter(it => typeof this[it] === 'function');
       console.log('proto methods', ownKeys);
   
-      center.clear();
+      this['__center'].clear();
       this['__center'] = undefined;
       rawDestroy.call(this, ...args);
   
       ownKeys.forEach((key) => {
-        Origin.prototype[key] = cNoop(key);
+        // Origin.prototype[key] = cNoop(key);
+        this[key] = cNoop(key);
       })
     }
   }
