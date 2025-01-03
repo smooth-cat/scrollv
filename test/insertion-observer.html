@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Mock.js/1.0.1-beta1/mock.js"
+    integrity="sha512-siqHsq6D0/vqgBA3kpVxCyC9whF4TyyegsJcBOCyE6Z/GkG0++Z8RPTIQV5Xw8GB6a1m9xbmHqNdL3/4hNVvZg=="
+    crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="../dist/scrollv.umd.js"></script>
+  <script>Scrollv.define('scroll-v', Scrollv.AutoHeight)</script>
+</head>
+<style>
+  .item {
+    overflow: hidden;
+    box-sizing: border-box;
+    height: 30px;
+  }
+
+  .red {
+    border: 1px solid red;
+  }
+
+  .blue {
+    border: 1px solid blue;
+  }
+
+  .expand {
+    height: 1000px;
+  }
+
+  .normal {
+    height: auto;
+  }
+
+  #theOne {
+    overflow: auto;
+  }
+</style>
+
+<body style="height: 80vh; display: flex;">
+  <div style="height: 100%; display: flex; flex-direction: column; width: 400px;">
+    <div>
+      <button id="btn" style="flex: none;">滚动</button>
+      <input id="ipt" placeholder="index滚动" style="width: 60px;" />
+      <button id="switchBtn" style="flex: none;">切换位置</button>
+      <button id="destroyBtn" style="flex: none;">删除</button>
+    </div>
+    <div id="theOne" style="border: 2px solid green; flex: 1; height: 1px;">
+    </div>
+  </div>
+  <div id="another"
+    style="border: 2px solid black; box-sizing: border-box; height: 100%; display: flex; flex-direction: column; width: 450px;">
+  </div>
+</body>
+<script>
+  const eventMap = new Map();
+  const container = document.getElementById('theOne');
+  const data = Array.from({ length: 10 }, (_, i) => ({ expand: false, h5: `第${i}项<br/>${window.Mock.Random.paragraph()}` }))
+  const innerHTML = data.map(({ h5 }, i) => `
+    <div id="${i}" class="item normal ${i % 2 === 0 ? 'blue' : 'red'}">${h5}</div>
+  `).join('');
+  container.innerHTML = innerHTML;
+  const tail = document.createElement('div');
+  tail.id='tail';
+  container.appendChild(tail);
+  const its = document.getElementsByClassName('item');
+
+  const obs = new IntersectionObserver(function (entries) {
+    entries.forEach((entry, i) => {
+      const height = entry.boundingClientRect.height;
+      const str =  entry.isIntersecting ? '进入' : '离开';
+      console.log(`no${entry.target.id} 项 ${str}，高度`, height);
+    })
+  }, 
+  {
+    root: container
+  });
+
+  obs.observe(tail);
+  // Array.from(its).forEach((el, i) => {
+  //   obs.observe(el);
+  // });
+</script>
+
+</html>
