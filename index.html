@@ -30,7 +30,7 @@
 <body style="height: 80vh; display: flex;">
   <div style="height: 100%; display: flex; flex-direction: column; width: 400px;">
     <div>
-      <button id="btn" style="flex: none;">滚动</button>
+      <input id="dty" placeholder="dtY" style="width: 60px;"/>
       <input id="ipt" placeholder="index滚动" style="width: 60px;"/>
       <button id="switchBtn" style="flex: none;">切换位置</button>
       <button id="destroyBtn" style="flex: none;">删除</button>
@@ -38,13 +38,12 @@
       <button id="expandBtn" style="flex: none;">展开</button>
     </div>
     <div id="theOne" style="border: 2px solid green; flex: 1; height: 1px;" >
-      <scroll-v id="scroll" style="height: 100%;" total="50" itemHeight="30" pad="2">
-      </scroll-v>
+      <scroll-v id="scroll" style="height: 100%;" total="50" itemHeight="150" pad="2"/>
     </div>
   </div>
   <div style="height: 100%; display: flex; flex-direction: column; width: 450px;">
     <div>
-      <button style="flex: none;">占位</button>
+      <!-- <button style="flex: none;">占位</button> -->
     </div>
     <div id="another" style="border: 2px solid black; flex: 1; height: 1px;" >
     </div>
@@ -53,7 +52,7 @@
 <script>
   const eventMap = new Map();
   const scroll= document.getElementById('scroll');
-  const data = Array.from({length: 50}, (_, i) => ({ expand: true, h5: `第${i}项<br/>${window.Mock.Random.paragraph()}`}))
+  const data = Array.from({length: 50}, (_, i) => ({ expand: false, h5: `第${i}项<br/>${window.Mock.Random.paragraph()}`}))
   scroll.addEventListener('slice', (e) => {
     const { start, end } = e.detail;
     const html = data.slice(start, end).map(({ h5, expand }, i) => {
@@ -86,8 +85,20 @@
     }
 
   })
-  btn.addEventListener('click', () => {
-    scroll.scrollv('delta', { dt: 1000 })
+
+  dty.addEventListener('keydown', (e) => {
+    if(e && e.keyCode === 13) {
+      try {
+        const num = parseInt(dty.value, 10);
+        console.log('num', num, dty.value);
+        // scroll.scrollv('delta', { dt: num })
+        scroll.__onWheel({ deltaY: num, rate: 1 })
+      } catch (err) {
+        console.error(`转换${dty.value}失败`, err);
+      } finally {
+        dty.value = '';
+      }
+    }
   });
 
   ipt.addEventListener('keydown', (e) => {

@@ -1,6 +1,7 @@
 export type Func = (...args: any[]) => any;
 
 const None = Symbol('none');
+export const timestamp = globalThis.performance ? globalThis.performance.now.bind(globalThis.performance) : Date.now;
 
 export enum EventMode {
   Immediate,
@@ -31,6 +32,7 @@ export type ISetScheduler = {
 export type IEventItem = {
   type: string;
   args: any[];
+  time: number;
 };
 
 export class BaseEvent {
@@ -99,7 +101,7 @@ export class BaseEvent {
   }
 
   emitQueue(type: string, ...args: any[]) {
-    this.eventQueue.push({ type, args });
+    this.eventQueue.push({ type, args, time: timestamp() });
     this.process();
   }
 
@@ -216,7 +218,7 @@ export class EventNode extends BaseEvent {
     if (firstNode && lastNode) {
       lastNode.once('real-finish', (...args) => {
         // 等待预处理完成后再开始触发事件，且修正 args
-        this.eventQueue.push({ type, args });
+        this.eventQueue.push({ type, args, time: timestamp() });
         this.start();
       });
       this.pause();

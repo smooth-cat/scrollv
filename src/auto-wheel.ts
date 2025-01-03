@@ -1,6 +1,6 @@
 import { InitQueue, InternalEvent, Queue, BlockQueue, UnBlockQueue } from './auto-wheel-decorator';
 import { BaseEvent, EventMode, Func } from './event';
-import { FrameScope, debounce, Events, macro, cNoop } from './util';
+import { FrameScope, debounce, Events, macro, cNoop, micro } from './util';
 
 const SLICE_EVENT = 'slice';
 
@@ -182,13 +182,15 @@ export class AutoHeight extends HTMLElement {
     this.slotEl = this.shadow.getElementById('slot') as any;
     this.wrapperHeight = this.wrapper.offsetHeight;
     this.wrapperObs.observe(this.wrapper);
+    // 滚动幅度小，diff 算法可能不会触发 slotchange，导致 transform 不变更
+    // this.slotEl.addEventListener('slotchange', this.fix.bind(this), { signal: this.abortCon.signal })
     this.wrapper.addEventListener(
       'wheel',
       e => {
         e.preventDefault();
         this.onWheel(e);
       },
-      { passive: false }
+      { passive: false, signal: this.abortCon.signal }
     );
   }
   /** 通过 sliceInfo 约束 emit 过程中需要提前设置的属性，避免漏设置 */
@@ -210,7 +212,7 @@ export class AutoHeight extends HTMLElement {
     const pos = {
       get start() {
         if (!this.filed) {
-          that.frame.requestFrame(() => that.fix(fixId));
+          that.frame.requestFrame(() => that.fix());
           this.filed = true;
         }
         return start;
@@ -301,16 +303,28 @@ export class AutoHeight extends HTMLElement {
     this.list.style.setProperty('transform', `translate3d(0,${v}px,0)`);
   }
 
+  fixedId = 0;
+  // TODO: 考虑用户其他对列表项 的 增删移操作时，导致一个 block 后出现多个 unblock
   @UnBlockQueue()
-  fix(fixId: number) {
-    if (this.fixId !== fixId) {
-      console.warn('未按顺序处理Queue中的事件', { fixId, currentId: this.fixId });
+  fix() {
+    const items = this.slotEl.assignedElements();
+    if(!items.length) {
+      return;
     }
-    console.log(`RAF-${fixId}`);
+    // TODO: slot 空白时不应该触发监听
+    // if(this.firstFix) {
+    //   this.firstFix = false;
+    //   return;
+    // }
+    this.fixedId++;
+    if (this.fixId !== this.fixedId) {
+      console.warn('未按顺序处理Queue中的事件', { fixId: this.fixId, fixed: this.fixedId });
+    }
+    console.log(`RAF-${this.fixedId}`);
     console.log(`----------------------------------`);
     const total = this.getProp('total');
     const itemHeight = this.getProp('itemHeight');
-    const items = this.slotEl.assignedElements();
+    
     const startItemIdx = this.start - this.padStart;
     const endItemIdx = this.end - this.padStart;
     const isStartVirtual = this.start < this.memo.padStart;
@@ -324,13 +338,17 @@ export class AutoHeight extends HTMLElement {
 
     const startItemHeight = (this.startItem.height = items[startItemIdx]?.getBoundingClientRect().height || 0);
     /**
-     * 通过 api 向上滚动时
-     * 如果正好滚动高度为一个虚拟项高度，
-     * 则认为这个项被滚动过了一个真实项的高度
+     * 如果新 start 是 Visual 则直接认为刚好滚动到其头部，
+     * 原因1：真实项的高度小于overflow，导致头部空白，或者 start 项错误
+     *       通过直接设值为真实项高度，可以保证 start 相关信息正确，并通过 fixTail 补充整个列表其他项
+     * 原因2：滚动接近一个完整虚拟项时，应当对应显示整个真实项
      */
-    if (isStartVirtual && Math.abs(this.overflow - itemHeight) < 10) {
+    if (isStartVirtual) {
       this.overflow = startItemHeight;
     }
+    // if (isStartVirtual && Math.abs(this.overflow - itemHeight) < 10) {
+    //   this.overflow = startItemHeight;
+    // }
 
     this.endItem.height = items[endItemIdx]?.getBoundingClientRect().height || 0;
     /** 从 scrollTop 到 end 的距离 */
@@ -385,11 +403,16 @@ export class AutoHeight extends HTMLElement {
       this.setTranslateY(-(padToTop - this.overflow));
     }
 
-    // console.log('fix', { maxDtY: this.maxDtY, minDtY: this.minDtY });
-    this.extraFix();
-  }
+    // 已渲染的 dom 填不满容器
+    if(realEnd == null) {
+      this.fillTail();
+    } 
+    // 如果尾部没问题再修复首部
+    // else if() {
 
-  extraFix() {
+    // }
+    // console.log('fix', { maxDtY: this.maxDtY, minDtY: this.minDtY });
+    
     if (!this.fixContext) return;
     const { type, payload } = this.fixContext;
     switch (type) {
@@ -397,15 +420,48 @@ export class AutoHeight extends HTMLElement {
         const index = payload;
         // 如果 index 项在视口内则不需要移动 TODO: 单item项测试
         if ((this.memo.start <= index && index < this.memo.end) || this.memo.start === this.memo.end) break;
-        const delta = this.calcToItemDelta(index);
-        this['__onWheel']({ deltaY: delta, rate: 1 } as any);
-        this['__center'].pause();
+        this.extraScrollToItem(index);
         break;
       default:
         break;
     }
-
     this.fixContext = undefined;
+  }
+
+  /** 渲染完成后仍然有空白（用户预估项值高于真实值的情况）
+   * 需要继续补充
+   */
+  @Queue(InternalEvent.FillTail)
+  fillTail() {
+    
+    const total = this.getProp('total');
+    const pad = this.getProp('pad');
+    const { topToPadEnd, wrapperHeight } = this;
+    const empty = wrapperHeight - topToPadEnd;
+
+    // 向下一直补到 total 如果还是不满
+
+    const { end } = this.calcEnd(this.memo.padEnd, empty);
+    if(end == null) {
+      console.log('fillTail-wheel');
+      this['__onWheel']({ deltaY: this.topToPadEnd - this.wrapperHeight, rate: 1 } as any);
+      return;
+    }
+    
+    console.log('fillTail-add');
+    this.emitSliceAndFix({
+      overflow: this.overflow,
+      start: this.memo.start,
+      padStart: this.memo.padStart,
+      end,
+      padEnd: Math.min(end + pad + 1, total),
+    });
+  }
+
+  @Queue(InternalEvent.ExtraFix)
+  extraScrollToItem(index: number) {
+    const delta = this.calcToItemDelta(index);
+    this['__onWheel']({ deltaY: delta, rate: 1 } as any);
   }
 
   calcList(start: number, isFirstPaint = false) {
@@ -580,11 +636,7 @@ export class AutoHeight extends HTMLElement {
     }
   }
   timeout = 600;
-
-  // TODO: 滚动后 endItem.scrolled 变成负数了
   // TODO: 滚动过程中 用户重复调用 api
-  // scrollv(scrollType: 'delta', opt: IScrollV['delta']): void;
-  // scrollv(scrollType: 'toItem', opt: IScrollV['toItem']): void;
   scrollv<T extends ScrollVType>(type: T, payload: IScrollV[T]) {
     const action: Action = {
       type,
@@ -679,8 +731,8 @@ export class AutoHeight extends HTMLElement {
           if (newEnd != null) {
             this.emitSliceAndFix({
               overflow: this.overflow,
-              start: this.start,
-              padStart: this.padStart,
+              start: this.memo.start,
+              padStart: this.memo.padStart,
               end: newEnd,
               padEnd: Math.min(newEnd + pad + 1, total)
             });
@@ -718,6 +770,7 @@ export class AutoHeight extends HTMLElement {
       const i = this.elToI.get(el);
       if (i == null) continue;
       const oldHeight = this.memoHeight.get(i);
+      // TODO: 使用 InsertionObserver 优化 getBoundingClientRect
       const { height: newHeight } = entry.target.getBoundingClientRect();
       if (oldHeight === newHeight || newHeight === 0) continue;
       hasResize = true;
@@ -776,8 +829,8 @@ export class AutoHeight extends HTMLElement {
     else {
       this.emitSliceAndFix({
         overflow: this.startItem.height - this.startItem.scrolled,
-        start: this.start,
-        padStart: this.padStart,
+        start: this.memo.start,
+        padStart: this.memo.padStart,
         end: newEnd,
         padEnd: Math.min(newEnd + pad + 1, total),
       });

@@ -12,46 +12,60 @@ export enum InternalEvent {
   ItemResize='ItemResize',
   /** fix */
   Fix='Fix',
+  /** fix 后对未填满的部分再次补充 */
+  FillTail='FillTail',
+  /** 修正位置后需要额外与调用方触发的事件 */
+  ExtraFix='ExtraFix',
 };
+
+
+export enum EventPriority {
+  /** fix时，重填容器高度优先级最高, 和 InternalEvent.FillTail 对应
+   * 因为只有填满后才应该开始做其他特殊处理
+    */
+  FillEmpty,
+  /** 对应 InternalEvent.InternalEvent, 目前只有 scroll toItem 上下文需要进行对应补滚动，滚动的距离因虚拟而计算失精 */
+  ExtraFix,
+  /** 以上优先级的其他情况，都是普通优先级 */
+  Normal,
+}
+
+const InternalEvent2Priority = {
+    /** 初始化 */
+    [InternalEvent.Connected]: EventPriority.Normal,
+    /** 一切与 scroll 相关的 */
+    [InternalEvent.Scroll]: EventPriority.Normal,
+    /** 容器高度变化 */
+    [InternalEvent.WrapperResize]: EventPriority.Normal,
+    /** 项高度变化 */
+    [InternalEvent.ItemResize]: EventPriority.Normal,
+    /** fix */
+    [InternalEvent.Fix]: EventPriority.Normal,
+    /** fix 后对未填满的部分再次补充 */
+    [InternalEvent.FillTail]: EventPriority.FillEmpty,
+    /** 修正位置后需要额外与调用方触发的事件 */
+    [InternalEvent.ExtraFix]: EventPriority.ExtraFix,
+}
 
 /** 记录 订阅事件 -> 函数名 */
 const eventToFnName = new Map<InternalEvent, string>();
 
 function createBlockCenter() {
   const center = new BaseEvent({ mode: EventMode.Queue });
-  // let hasUnfixed = false;
-  // center.setScheduler(() => {
-  //   const fixI = center.eventQueue.findIndex(it => it.type === InternalEvent.Fix);
-  //   /**
-  //    * 无 fixI，从前往后 看 process 是否有
-  //    * 1. 有未 fix 的 scroll，则直接结束
-  //    * 2. 无未 fix 的 scroll，则触发当前第一个 scroll，并记录 未 fix
-  //    */
-  //   if (!~fixI) {
-  //     if (hasUnfixed) return;
-  //     const first = center.eventQueue[0];
-  //     if (!first) return;
-  //     // 参数0 - event，参数1 - fixId
-  //     center.dispatchEvent([0]);
-  //     hasUnfixed = true;
-  //     return;
-  //   }
+  // 遇到优先级较高的任务把其放队首
+  center.setScheduler(() => {
+    center.eventQueue.sort((a, b) => {
+      const ap = InternalEvent2Priority[a.type];
+      const bp = InternalEvent2Priority[b.type];
+      // 优先级按从小(靠前)到大排
+      if(ap !== bp) return ap - bp;
 
-  //   /**
-  //    * 有 fixI
-  //    * 1. 删除已有的 fixed，
-  //    *    先触发 fixId 事件
-  //    *    再触发下一个 scroll 事件
-  //    */
-  //   // 触发 fix 事件
-  //   center.dispatchEvent([fixI]);
-  //   hasUnfixed = false;
-  //   // 触发 第一个 scroll 事件
-  //   const processI = center.eventQueue.findIndex(it => it.type !== InternalEvent.Fix);
-  //   if (!~processI) return;
-  //   center.dispatchEvent([processI]);
-  //   hasUnfixed = true;
-  // });
+      // 时间戳也同样按从小到大排
+      return a.time - b.time;
+    })
+
+    center.processQueue();
+  });
   return center;
 }
 

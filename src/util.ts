@@ -32,6 +32,10 @@ export const macro = (cb: Function) => {
   idToFn.set(id, cb);
   messageChannel.port2.postMessage(id);
 };
+const p = Promise.resolve();
+export const micro = (cb: Function) => {
+  p.then(cb as any);
+}
 
 export class FrameScope {
   frameIds = new Set();
