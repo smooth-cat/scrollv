@@ -1,6 +1,6 @@
 {
   "name": "scrollv",
-  "version": "0.0.9",
+  "version": "0.0.10",
   "main": "dist/scrollv.cjs.js",
   "module": "dist/scrollv.esm.js",
   "browser": "dist/scrollv.umd.js",
