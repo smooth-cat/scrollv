@@ -52,7 +52,7 @@
 <script>
   const eventMap = new Map();
   const scroll= document.getElementById('scroll');
-  const data = Array.from({length: 50}, (_, i) => ({ expand: false, h5: `第${i}项<br/>${window.Mock.Random.paragraph()}`}))
+  const data = Array.from({length: 50}, (_, i) => ({ expand: true, h5: `第${i}项<br/>${window.Mock.Random.paragraph()}`}))
   scroll.addEventListener('slice', (e) => {
     const { start, end } = e.detail;
     const html = data.slice(start, end).map(({ h5, expand }, i) => {
