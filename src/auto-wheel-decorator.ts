@@ -163,3 +163,23 @@ export function Observable(target: any, key: string) {
     }
   });
 }
+
+export enum Mode {
+  /** 观察者 */
+  Observer,
+  /** 微任务轮询 */
+  MicroPoll,
+  /** 宏任务轮询 */
+  MacroPoll
+};
+
+export function ShouldExec() {
+  return function (target: any, key: string, descriptor: TypedPropertyDescriptor<Function>) {
+    const raw = target[key];
+    // 非 Observer 不执行
+    descriptor.value = function (...args) {
+      if(this.mode !== Mode.Observer) return;
+      raw.apply(this, args);
+    }
+  }
+}

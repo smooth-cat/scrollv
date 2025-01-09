@@ -1,4 +1,5 @@
 import { AutoHeight } from "./auto-wheel";
+import { AutoHeight as AutoHeightInsertion } from "./auto-wheel-insertion";
 import { FixHeight } from "./fix-height";
 import { Events } from "./util";
 
@@ -32,4 +33,5 @@ export function onInit(id: string, fn: (dom: FixHeight|AutoHeight) => void) {
 export {
   AutoHeight,
   FixHeight,
+  AutoHeightInsertion,
 }

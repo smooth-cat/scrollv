@@ -1,12 +1,18 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Document</title>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/Mock.js/1.0.1-beta1/mock.js" integrity="sha512-siqHsq6D0/vqgBA3kpVxCyC9whF4TyyegsJcBOCyE6Z/GkG0++Z8RPTIQV5Xw8GB6a1m9xbmHqNdL3/4hNVvZg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-  <script src="./dist/scrollv.umd.js" ></script>
-  <script>Scrollv.define('scroll-v', Scrollv.AutoHeight)</script>
+  <script src="./test/mock.js"
+    integrity="sha512-siqHsq6D0/vqgBA3kpVxCyC9whF4TyyegsJcBOCyE6Z/GkG0++Z8RPTIQV5Xw8GB6a1m9xbmHqNdL3/4hNVvZg=="
+    crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="./dist/scrollv.umd.js"></script>
+  <script>
+    Scrollv.define('scroll-v', Scrollv.AutoHeight);
+    Scrollv.define('scroll-vv', Scrollv.AutoHeightInsertion)
+  </script>
 </head>
 <style>
   .item {
@@ -14,50 +20,58 @@
     box-sizing: border-box;
     height: 30px;
   }
+
   .red {
     border: 1px solid red;
+    background-color: red;
   }
+
   .blue {
     border: 1px solid blue;
+    background-color: blue;
   }
+
   .expand {
     height: auto;
   }
+
   .shrink {
     height: 30px;
   }
 </style>
+
 <body style="height: 80vh; display: flex;">
   <div style="height: 100%; display: flex; flex-direction: column; width: 400px;">
     <div>
-      <input id="dty" placeholder="dtY" style="width: 60px;"/>
-      <input id="ipt" placeholder="index滚动" style="width: 60px;"/>
+      <button id="dty" style="width: 60px;">跳转</button>
+      <input id="ipt" placeholder="index滚动" style="width: 60px;" />
       <button id="switchBtn" style="flex: none;">切换位置</button>
       <button id="destroyBtn" style="flex: none;">删除</button>
       <button id="foldBtn" style="flex: none;">折叠</button>
       <button id="expandBtn" style="flex: none;">展开</button>
     </div>
-    <div id="theOne" style="border: 2px solid green; flex: 1; height: 1px;" >
-      <scroll-v id="scroll" style="height: 100%;" total="50" itemHeight="150" pad="2"/>
+    <div id="theOne" style="border: 2px solid green; flex: 1; height: 1px;">
+      <scroll-v id="scroll" style="height: 100%;" total="10" itemHeight="150" pad="300" />
     </div>
   </div>
-  <div style="height: 100%; display: flex; flex-direction: column; width: 450px;">
+  <div style="height: 100%; display: flex; flex-direction: column; width: 400px;">
     <div>
-      <!-- <button style="flex: none;">占位</button> -->
+      <button style="flex: none;">占位</button>
     </div>
-    <div id="another" style="border: 2px solid black; flex: 1; height: 1px;" >
+    <div id="another" style="border: 2px solid black; flex: 1; height: 1px;">
+      <scroll-vv id="scroll2" style="height: 100%;" total="10" itemHeight="150" pad="300" />
     </div>
   </div>
 </body>
 <script>
   const eventMap = new Map();
-  const scroll= document.getElementById('scroll');
-  const data = Array.from({length: 50}, (_, i) => ({ expand: true, h5: `第${i}项<br/>${window.Mock.Random.paragraph()}`}))
+  const scroll = document.getElementById('scroll');
+  const data = Array.from({ length: 10 }, (_, i) => ({ expand: true, h5: `第${i}项<br/>${window.Mock.Random.paragraph()}` }))
   scroll.addEventListener('slice', (e) => {
     const { start, end } = e.detail;
     const html = data.slice(start, end).map(({ h5, expand }, i) => {
-      const isSingle = (start+i) % 2 === 1;
-      return `<div class="${isSingle ? 'blue' : 'red'} ${expand ?  'expand' : 'shrink' } item">${h5}</div>`
+      const isSingle = (start + i) % 2 === 1;
+      return `<div class="${isSingle ? 'blue' : 'red'} ${expand ? 'expand' : 'shrink'} item">${h5}</div>`
     }).join('');
     eventMap.forEach((fn, element) => {
       element.removeEventListener('click', fn);
@@ -66,15 +80,15 @@
 
     scroll.innerHTML = html;
     const its = document.getElementsByClassName('item');
-    
-    for (let i=0;  i < its.length; i++) {
+
+    for (let i = 0; i < its.length; i++) {
       const element = its[i];
       const j = start + i;
       const fn = () => {
         const { height } = element.getBoundingClientRect();
         const newExpand = !data[j].expand;
         data[j].expand = newExpand;
-        if(newExpand) {
+        if (newExpand) {
           element.style.setProperty('height', 'auto')
         } else {
           element.style.setProperty('height', '30px')
@@ -84,25 +98,89 @@
       eventMap.set(element, fn);
     }
 
-  })
-
-  dty.addEventListener('keydown', (e) => {
-    if(e && e.keyCode === 13) {
-      try {
-        const num = parseInt(dty.value, 10);
-        console.log('num', num, dty.value);
-        // scroll.scrollv('delta', { dt: num })
-        scroll.__onWheel({ deltaY: num, rate: 1 })
-      } catch (err) {
-        console.error(`转换${dty.value}失败`, err);
-      } finally {
-        dty.value = '';
-      }
-    }
   });
 
+
+  scroll2.addEventListener('slice', (e) => {
+    const { start, end } = e.detail;
+    const html = data.slice(start, end).map(({ h5, expand }, i) => {
+      const isSingle = (start + i) % 2 === 1;
+      return `<div class="${isSingle ? 'blue' : 'red'} ${expand ? 'expand' : 'shrink'} item">${h5}</div>`
+    }).join('');
+    eventMap.forEach((fn, element) => {
+      element.removeEventListener('click', fn);
+    })
+    eventMap.clear();
+
+    scroll2.innerHTML = html;
+    const its = document.getElementsByClassName('item');
+
+    for (let i = 0; i < its.length; i++) {
+      const element = its[i];
+      const j = start + i;
+      const fn = () => {
+        const { height } = element.getBoundingClientRect();
+        const newExpand = !data[j].expand;
+        data[j].expand = newExpand;
+        if (newExpand) {
+          element.style.setProperty('height', 'auto')
+        } else {
+          element.style.setProperty('height', '30px')
+        }
+      };
+      element.addEventListener('click', fn);
+      eventMap.set(element, fn);
+    }
+
+  });
+
+  let toDown = true;
+  dty.addEventListener('click', (e) => {
+    try {
+      // const num = parseInt(dty.value, 10);
+      const num = toDown ? 11000 : -9000;
+      toDown=!toDown;
+      const step = Math.ceil(num / 60);
+      let count = 0;
+      const interval = setInterval(() => {
+        if (count === 60) {
+          clearInterval(interval);
+          return;
+        }
+        scroll.onWheel({ deltaY: step, rate: 1 })
+        count++;
+      }, 0);
+    } catch (err) {
+      console.error(`转换${dty.value}失败`, err);
+    } finally {
+      dty.value = '';
+    }
+  });
+  // dty.addEventListener('keydown', (e) => {
+  //   if(e && e.keyCode === 13) {
+  //     try {
+  //       // const num = parseInt(dty.value, 10);
+  //       const num = 13000
+  //       const step = Math.ceil(num / 60);
+  //       let count = 0;
+  //       const interval = setInterval(() => {
+  //         if(count === 60) {
+  //           clearInterval(interval);
+  //           return;
+  //         }
+  //         scroll.onWheel({ deltaY: step, rate: 1 })
+  //         count++;
+  //       }, 0);
+  //     } catch (err) {
+  //       console.error(`转换${dty.value}失败`, err);
+  //     } finally {
+  //       dty.value = '';
+  //     }
+  //   }
+  // });
+
   ipt.addEventListener('keydown', (e) => {
-    if(e && e.keyCode === 13) {
+    if (e && e.keyCode === 13) {
       try {
         const num = parseInt(ipt.value, 10);
         scroll.scrollv('toItem', { index: num })
@@ -115,7 +193,7 @@
   });
 
   switchBtn.addEventListener('click', () => {
-    if(theOne.contains(scroll)) {
+    if (theOne.contains(scroll)) {
       another.appendChild(scroll);
     } else {
       theOne.appendChild(scroll);
@@ -126,7 +204,7 @@
   })
   foldBtn.addEventListener('click', () => {
     const its = document.getElementsByClassName('item');
-    for (let i=0;  i < its.length; i++) {
+    for (let i = 0; i < its.length; i++) {
       const element = its[i];
       element.style.setProperty('height', '30px')
     }
@@ -136,7 +214,7 @@
   })
   expandBtn.addEventListener('click', () => {
     const its = document.getElementsByClassName('item');
-    for (let i=0;  i < its.length; i++) {
+    for (let i = 0; i < its.length; i++) {
       const element = its[i];
       element.style.setProperty('height', 'auto')
     }
@@ -145,4 +223,5 @@
     })
   })
 </script>
+
 </html>

@@ -2,7 +2,16 @@
  * @deprecated
  * 测试情况看来，反应速度没有 ResizeObserver 来的快
  */
-import { InitQueue, InternalEvent, Queue, BlockQueue, UnBlockQueue, Observable } from './auto-wheel-decorator';
+import {
+  InitQueue,
+  InternalEvent,
+  Queue,
+  BlockQueue,
+  UnBlockQueue,
+  Observable,
+  Mode,
+  ShouldExec
+} from './auto-wheel-decorator';
 import { BaseEvent, EventMode, Func } from './event';
 import { FrameScope, debounce, Events, macro, cNoop, micro } from './util';
 
@@ -15,11 +24,11 @@ const keys = {
 };
 
 type EnterLeaveCbs = {
-  enterFromStart?: (entry: IntersectionObserverEntry) => void;
-  enterFromEnd?: (entry: IntersectionObserverEntry) => void;
-  enter?: (entry: IntersectionObserverEntry) => void;
-  leaveFromStart?: (entry: IntersectionObserverEntry) => void;
-  leaveFromEnd?: (entry: IntersectionObserverEntry) => void;
+  enterFromStart?: (entry: IEntry) => void;
+  enterFromEnd?: (entry: IEntry) => void;
+  enter?: (entry: IEntry) => void;
+  leaveFromStart?: (entry: IEntry) => void;
+  leaveFromEnd?: (entry: IEntry) => void;
 };
 
 export type Keys = keyof typeof keys;
@@ -65,16 +74,15 @@ enum Zone {
 
 type IZone = {
   zone: Zone;
-  entry: IntersectionObserverEntry;
+  entry: IEntry;
 };
 
 type LoadContext = {
-  from: Zone,
-}
-
+  from: Zone;
+};
+type IEntry = IntersectionObserverEntry;
 type SliceInfo = Pick<AutoHeight, 'start' | 'end'> & Record<any, any>;
 
-@InitQueue()
 export class AutoHeight extends HTMLElement {
   static tag = 'scrollv';
   constructor() {
@@ -87,17 +95,11 @@ export class AutoHeight extends HTMLElement {
   template = document.createElement(`template`);
   shadow: ShadowRoot;
   wrapper: HTMLElement;
-  startPad: HTMLElement;
-  endPad: HTMLElement;
-  startVirtual: HTMLElement;
-  endVirtual: HTMLElement;
 
   list: HTMLElement;
   lead: HTMLElement;
   tail: HTMLElement;
   slotEl: HTMLSlotElement;
-  padStart = 0;
-  padEnd = 0;
   connectedPos: IPos;
 
   /*----------------- 需计算的属性 -----------------*/
@@ -105,10 +107,9 @@ export class AutoHeight extends HTMLElement {
   start = 0;
   /** 渲染终止位置(不一定代表真实位置，可能是通过 itemHeight 计算出的预计 end，真实的 memo.end 在 fix 过程中会计算得出) */
   end = 0;
-  /** @deprecated 对动态高度的计算 */
-  wrapperHeight: number;
-  firstConnected = true;
 
+  firstConnected = true;
+  // TODO: 首屏白屏问题
   connectedCallback() {
     if (!this.firstConnected) return;
     console.log('connected isConnected', this.isConnected);
@@ -171,25 +172,17 @@ export class AutoHeight extends HTMLElement {
           position: absolute; width: 100%; height: 100%;
         }
         #list {
-          position: absolute; left: 0; top: 1px; right: 0;
+          position: absolute; left: 0; top: 0px; right: 0;
         }
         #lead,#tail {
-          width: 100%; height: 1px;
+          width: 100%; height: 0px;
         }
       </style>
       <div id="wrapper">
-        <div id="startPad">
-          <div id="endPad">
-            <div id="startVirtual">
-              <div id="endVirtual">
-                <div id="list">
-                  <div id="lead"></div>
-                  <slot id="slot"></slot>
-                  <div id="tail"></div>
-                </div>
-              </div>
-            </div>
-          </div>
+        <div id="list">
+          <div id="lead"></div>
+          <slot id="slot"></slot>
+          <div id="tail"></div>
         </div>
       </div>
     `;
@@ -225,179 +218,305 @@ export class AutoHeight extends HTMLElement {
 
   getAvgHeight = () => {
     const listHeight = this.list.clientHeight;
-    if(this.end - this.start > 0) {
+    if (this.end - this.start > 0) {
       return listHeight / (this.end - this.start);
-    } 
+    }
     return this.getProp('itemHeight');
-  }
+  };
 
   @Observable tailZone: Zone;
   @Observable leadZone: Zone;
-  loadCtx: LoadContext;
-  lockScrollDown=false;
-  lockScrollUp=false;
-  onTailZoneChanged(value: Zone, oldVal: Zone) {
-    console.log(`tail在${Zone[value]},原${Zone[oldVal]}`);
-    // console.trace('tail', { ctx: this.loadCtx, value: Zone[value], oldVal: Zone[oldVal] });
-    // 向下加载至 tail 进入 EndVirtual
-    if ([Zone.Visual, Zone.EndPad].includes(value)) {
-      const prevLoadCtx = this.loadCtx;
-      this.loadCtx = {
-        from: value,
-      }
-      if(!prevLoadCtx) {
-        this.fillEndLoop(true);
-      }
-    }
+  loadEndCtx: LoadContext;
+  loadStartCtx: LoadContext;
+  lockScrollDown = false;
+  lockScrollUp = true;
+  mode = Mode.Observer;
+  maxDtY: number;
+  minDtY: number;
 
-    const total = this.getProp('total')
-
-    const isEndToVisual = value === Zone.Visual && [Zone.EndPad, Zone.EndVirtual].includes(oldVal);
-    const reachEnd = total === this.end;
-
-    // 从 end 过渡到 Visual，需要将
-    if(isEndToVisual && reachEnd) {
-      console.log('reachEnd');
-      const { bottom: wrapperBottom } = this.wrapper.getBoundingClientRect();
-      const { top: tailTop } = this.tail.getBoundingClientRect();
-      const toBottom = wrapperBottom - tailTop;
-      this.setsTop(this.sTop - toBottom - 1);
-      this.lockScrollDown = true;
-    }
-   
-
-    if(value === Zone.EndVirtual) {
-      this.loadCtx = null;
-    }
-  }
-
-  maxLoop = 20;
-  loopCount = 0;
-  fillEndLoop (imd: boolean) {
+  fillEnd({ itemHeight, tailTop, tailBottom, wrapperBottom }: any) {
     const total = this.getProp('total');
-    // raf 不得超过 20 次
-    if(imd !== true) {
-      if(this.loopCount === this.maxLoop) {
-        this.loopCount = 0;
-        return;
-      }
-      this.loopCount++;
-    }
-
-    if(!this.loadCtx) {
+    if (this.end === total) {
       return;
     }
 
-    if(this.end === total) {
-      return;
-    }
-
-    
     const pad = this.getProp('pad');
-    const itemHeight = this.getAvgHeight();
-    const { top: tailTop, bottom: tailBottom } = this.tail.getBoundingClientRect();
-    const { bottom: wrapperBottom } = this.wrapper.getBoundingClientRect();
+    tailBottom = Math.floor(tailBottom);
 
     /** 因为 observer 是惰性的，修改 dom 后下一个 raf 时 observer 还没触发，因此需要根据实际当前 dom 情况 判断 tail 的真实位置 */
-    const realZone = tailBottom < wrapperBottom 
-        ? Zone.Visual 
-        : tailBottom < wrapperBottom + pad
-          ? Zone.EndPad
-          : Zone.EndVirtual;
+    const realZone =
+      tailBottom <= wrapperBottom ? Zone.Visual : tailBottom <= wrapperBottom + pad ? Zone.EndPad : Zone.EndVirtual;
 
-    this.tailZone = realZone;
-    this.loadCtx = { from: realZone };
-    if(realZone === Zone.EndVirtual) {
-      this.loadCtx = null;
+    if (realZone === Zone.EndVirtual) {
+      console.warn('fillEnd在不需要填充时被调用', JSON.stringify(arguments[0]));
       return;
     }
 
-    const empty = this.loadCtx.from === Zone.Visual 
-      //  
-      ? wrapperBottom - tailTop + pad 
-      // 
-      : pad - (tailTop - wrapperBottom);
-      
+    const empty =
+      realZone === Zone.Visual
+        ? //
+          wrapperBottom - tailTop + pad
+        : //
+          pad - (tailTop - wrapperBottom);
 
-    if(empty < 0) {
+    if (empty < 0) {
       debugger;
     }
 
     const count = Math.ceil(empty / itemHeight);
     const newEnd = Math.min(this.end + count, total);
-
-    console.log('fillLoop', { imd, realZone: Zone[realZone], tailTop, itemHeight, wrapperBottom, empty, end: newEnd });
+    console.trace('fillEnd', { realZone: Zone[realZone], tailTop, itemHeight, wrapperBottom, empty, end: newEnd });
     this.emitSliceAndFix({
       start: this.start,
-      end: newEnd,
+      end: newEnd
     });
-    requestAnimationFrame(this.fillEndLoop.bind(this));
   }
 
-  onLeadZoneChanged(value: Zone, oldVal: Zone) {
-    console.log(`lead在${Zone[value]},原${Zone[oldVal]}`);
-    const isStartToVisual = value === Zone.Visual
-    const reachStart = 0 === this.start;
-    if(reachStart && isStartToVisual) {
-      const { top: wrapperTop } = this.wrapper.getBoundingClientRect();
-      const { bottom: leadBottom } = this.lead.getBoundingClientRect();
-      const toTop = wrapperTop - leadBottom;
-      this.setsTop(Math.floor((this.sTop - toTop)));
-      this.lockScrollUp = true;
+  fillStart({ itemHeight, leadTop, leadBottom, wrapperTop }: any) {
+    if (this.start === 0) {
+      return;
+    }
+    const pad = this.getProp('pad');
+    leadBottom = Math.ceil(leadBottom);
+    /** 因为 observer 是惰性的，修改 dom 后下一个 raf 时 observer 还没触发，因此需要根据实际当前 dom 情况 判断 tail 的真实位置 */
+    const realZone =
+      leadTop >= wrapperTop ? Zone.Visual : leadTop >= wrapperTop - pad ? Zone.StartPad : Zone.StartVirtual;
+
+    if (realZone === Zone.StartVirtual) {
+      console.warn('fillStart在不需要填充时被调用', JSON.stringify(arguments[0]));
+      return;
+    }
+
+    const empty =
+      realZone === Zone.Visual
+        ? //
+          leadBottom - wrapperTop + pad
+        : //
+          pad - (wrapperTop - leadBottom);
+
+    if (empty < 0) {
+      debugger;
+    }
+
+    const count = Math.ceil(empty / itemHeight);
+    const newStart = nature(this.start - count);
+
+    console.trace('fillStart', { realZone: Zone[realZone], leadTop, itemHeight, wrapperTop, empty, end: newStart });
+    this.emitSliceAndFix({
+      start: newStart,
+      end: this.end
+    });
+  }
+
+  broadHandlers = (entry: IEntry) => {
+    return entry.target === this.tail
+      ? {
+          enter: this.o.tailEnterBroad,
+          leaveFromEnd: this.o.tailLeaveBroadFromEnd
+          // leaveFromStart: this.o.tailLeaveBroadFromStart,
+        }
+      : {
+          enter: this.o.leadEnterBroad,
+          // leaveFromEnd: this.o.leadLeaveBroadFromEnd,
+          leaveFromStart: this.o.leadLeaveBroadFromStart
+        };
+  };
+
+  o = {
+    /*----------------- windObs -----------------*/
+    tailEnterWind: (entry: IEntry) => {},
+    tailLeaveWindFromEnd: (entry: IEntry) => {},
+    leadEnterWind: (entry: IEntry) => {},
+    leadLeaveWindFromStart: (entry: IEntry) => {},
+    /*----------------- broadObs -----------------*/
+    tailEnterBroad: (entry: IEntry) => {
+      const { bottom: wrapperBottom } = entry.rootBounds;
+      const { bottom: tailBottom, top: tailTop } = entry.boundingClientRect;
+      this.fillEnd({
+        itemHeight: this.getAvgHeight(),
+        tailTop,
+        tailBottom,
+        wrapperBottom
+      });
+    },
+    tailLeaveBroadFromEnd: (entry: IEntry) => {},
+    leadEnterBroad: (entry: IEntry) => {
+      const { top: wrapperTop } = entry.rootBounds;
+      const { bottom: leadBottom, top: leadTop } = entry.boundingClientRect;
+      this.fillStart({
+        itemHeight: this.getAvgHeight(),
+        leadTop,
+        leadBottom,
+        wrapperTop
+      });
+    },
+    leadLeaveBroadFromStart: (entry: IEntry) => {},
+    itemLeaveBroadFromStart: (entry: IEntry) => {},
+    itemLeaveBroadFromEnd: (entry: IEntry) => {}
+  }
+  i = {
+    /*----------------- windObs -----------------*/
+    tailEnterWind: () => {},
+    tailLeaveWindFromEnd: () => {},
+    leadEnterWind: () => {},
+    leadLeaveWindFromStart: () => {},
+    tailEnterBroad: () => {},
+    tailLeaveBroadFromEnd: () => {},
+    leadEnterBroad: () => {},
+    leadLeaveBroadFromStart: () => {},
+    itemLeaveFromStart: () => {},
+    itemLeaveFromEnd: () => {}
+  };
+
+
+  /** 边界检测，若未检测到任何需要渲染的边界条件
+ * 则返回 false
+ * 若检测到则返回 true
+ */
+  boundaryCheck() {
+    const els = this.slotEl.assignedElements() as HTMLElement[];
+    this.watchItems(els);
+    const pad = this.getProp('pad');
+    const total = this.getProp('total');
+    if(this.start < this.memo.start) {
+      const addedCount= this.memo.start - this.start;
+      let addedTop = 0;
+      for (let i = 0; i < els.length; i++) {
+        if(i === addedCount) break;
+        const el = els[i];
+        addedTop += el.offsetHeight;
+      }
+      this.setsTop(v => v + addedTop);
+    }
+    const { top: leadTop, bottom: leadBottom } = this.lead.getBoundingClientRect();
+    const { top: tailTop, bottom: tailBottom } = this.tail.getBoundingClientRect();
+    const { top: wrapperTop, bottom: wrapperBottom } = this.wrapper.getBoundingClientRect();
+    let needRerender = false;
+
+    if(this.end === total) {
+      this.maxDtY = tailTop - wrapperBottom;
+    } else  {
+      this.maxDtY = null;
+    }
+
+    if(this.start === 0) {
+      this.minDtY = leadBottom - wrapperTop;
+    } else  {
+      this.minDtY = null;
+    }
+
+
+    if(tailBottom < pad + wrapperBottom) {
+      needRerender = true;
+      this.fillEnd({
+        itemHeight: this.getAvgHeight(),
+        tailTop,
+        tailBottom,
+        wrapperBottom
+      });
+    }
+    if(leadTop > wrapperTop - pad) {
+      needRerender = true;
+      this.fillStart({
+        itemHeight: this.getAvgHeight(),
+        leadTop,
+        leadBottom,
+        wrapperTop
+      });
+    }
+    this.memo.start = this.start;
+    this.memo.end = this.end;
+    return needRerender;
+  }
+
+  @ShouldExec()
+  handleBroad(entries: IEntry[]) {
+    let endDel = 0;
+    let endDelCount = 0;
+    let startDel = 0;
+    let startDelCount = 0;
+    for (const entry of entries) {
+      if (entry.target === this.tail || entry.target === this.lead) {
+        const handlers = this.broadHandlers(entry);
+        this.enterOrLeave(entry, handlers);
+        continue;
+      }
+
+      this.enterOrLeave(entry, {
+        leaveFromStart: () => {
+          startDel += entry.boundingClientRect.height;
+          startDelCount++;
+        },
+        leaveFromEnd: () => {
+          endDel += entry.boundingClientRect.height;
+          endDelCount++;
+        }
+      });
+    }
+
+    if (startDel) {
+      this.emitSliceAndFix({
+        start: this.start + startDelCount,
+        end: this.end
+      });
+      this.setsTop(v => v - startDel);
+    }
+
+    if (endDel) {
+      this.emitSliceAndFix({
+        start: this.start,
+        end: this.end - endDelCount
+      });
     }
   }
+  isMount = true;
 
-  zoneKey = (entry: IntersectionObserverEntry) => (entry.target === this.tail ? 'tailZone' : 'leadZone');
-
-  handleVisual(entries: IntersectionObserverEntry[]) {
+  @ShouldExec()
+  handleWind(entries: IEntry[]) {
+    const isMount = this.isMount;
     for (const entry of entries) {
+      if (entry.target === this.tail) {
+        this.enterOrLeave(entry, {
+          enter: () => {
+            if (isMount) {
+              return (this.isMount = false);
+            }
+            const { top: tailTop } = entry.boundingClientRect;
+            const { bottom: wrapperBottom } = entry.rootBounds;
+            const scrollDownDist = wrapperBottom - tailTop;
+            this.setsTop(v => Math.ceil(v - scrollDownDist));
+            this.boundaryCheck();
+            console.log('tail 进入 Visual', tailTop, wrapperBottom);
+            this.lockScrollDown = true;
+          },
+          leaveFromEnd: () => {
+            this.lockScrollDown = false;
+          }
+        });
+        continue;
+      }
       this.enterOrLeave(entry, {
         enter: () => {
-          this[this.zoneKey(entry)] = Zone.Visual
+          if (isMount) {
+            return (this.isMount = false);
+          }
+          const { bottom: leadBottom } = entry.boundingClientRect;
+          const { top: wrapperTop } = entry.rootBounds;
+          const scrollUpDist = leadBottom - wrapperTop;
+          console.log('lead 进入 Visual', leadBottom, wrapperTop);
+          this.setsTop(v => Math.ceil(v + scrollUpDist));
+          this.boundaryCheck();
+          this.lockScrollUp = true;
+        },
+        leaveFromStart: () => {
+          console.log('lead 离开了 top');
+          this.lockScrollUp = false;
         }
       });
     }
   }
-  handleStartPad(entries: IntersectionObserverEntry[]) {
-    for (const entry of entries) {
-      this.enterOrLeave(entry, {
-        enter: () => (this[this.zoneKey(entry)] = Zone.StartPad)
-      });
-    }
-  }
 
-  handleEndPad(entries: IntersectionObserverEntry[]) {
-    for (const entry of entries) {
-      this.enterOrLeave(entry, {
-        enter: () => {
-          const key = this.zoneKey(entry);
-          console.log(key, '进入 endPad 区');
-          (this[key] = Zone.EndPad)
-        }
-      });
-    }
-  }
-
-  handleStartVirtual(entries: IntersectionObserverEntry[]) {
-    for (const entry of entries) {
-      this.enterOrLeave(entry, {
-        enter: () => (this[this.zoneKey(entry)] = Zone.StartVirtual)
-      });
-    }
-  }
-  handleEndVirtual(entries: IntersectionObserverEntry[]) {
-    for (const entry of entries) {
-      this.enterOrLeave(entry, {
-        enter: () => {
-          const key = this.zoneKey(entry);
-          console.log(key, '进入 endVirtual 区');
-          (this[key] = Zone.EndVirtual)
-        }
-      });
-    }
-  }
-
-  enterOrLeave = (entry: IntersectionObserverEntry, cbs: EnterLeaveCbs) => {
+  enterOrLeave = (entry: IEntry, cbs: EnterLeaveCbs) => {
     // entry 进入视野
     if (entry.isIntersecting) {
       cbs.enter?.(entry);
@@ -420,11 +539,6 @@ export class AutoHeight extends HTMLElement {
   watchDoms() {
     const pad = this.getProp('pad');
     this.wrapper = this.shadow.getElementById('wrapper');
-    this.startPad = this.shadow.getElementById('startPad');
-    this.endPad = this.shadow.getElementById('endPad');
-    this.startVirtual = this.shadow.getElementById('startVirtual');
-    this.endVirtual = this.shadow.getElementById('endVirtual');
-
     this.list = this.shadow.getElementById('list');
     this.slotEl = this.shadow.getElementById('slot') as any;
     this.lead = this.shadow.getElementById('lead');
@@ -438,47 +552,58 @@ export class AutoHeight extends HTMLElement {
       },
       { passive: false, signal: this.abortCon.signal }
     );
-
-    this.startVirtual.style.setProperty('bottom', `${pad}px`)
-    this.endVirtual.style.setProperty('top', `${pad * 2}px`)
-    this.list.style.setProperty('top', `-${pad - 1}px`)
-
-    this.visualObs = new IntersectionObserver(this.handleVisual.bind(this), { root: this.wrapper });
-    this.startPadObs = new IntersectionObserver(this.handleStartPad.bind(this), {
-      root: this.startPad,
-      rootMargin: `${pad}px 0px -100% 0px`
-    });
-    this.endPadObs = new IntersectionObserver(this.handleEndPad.bind(this), {
-      root: this.endPad,
-      rootMargin: `-100% 0px ${pad}px 0px`
-    });
-
-    this.startVirtualObs = new IntersectionObserver(this.handleStartVirtual.bind(this), {
-      root: this.startVirtual,
+    this.windObs = new IntersectionObserver(this.handleWind.bind(this), {
+      root: this.wrapper,
       threshold: 1,
-      rootMargin: `${Number.MAX_SAFE_INTEGER}px 0px -100% 0px`
+      rootMargin: `-1px 0px 0px -1px`
     });
-    this.endVirtualObs = new IntersectionObserver(this.handleEndVirtual.bind(this), {
-      root: this.endVirtual,
-      threshold: 1,
-      rootMargin: `-100% 0px ${Number.MAX_SAFE_INTEGER}px 0px`
+    this.broadObs = new IntersectionObserver(this.handleBroad.bind(this), {
+      root: this.wrapper,
+      rootMargin: `${pad}px 0px ${pad}px 0px`
     });
-
-  
-    [this.visualObs, this.startPadObs, this.endPadObs, this.startVirtualObs, this.endVirtualObs].forEach(obs => {
-      obs.observe(this.lead);
-      obs.observe(this.tail);
-    });
-
+    // this.slotEl.addEventListener('slotchange', this.watchItems.bind(this));
+    this.broadObs.observe(this.lead);
+    this.broadObs.observe(this.tail);
+    this.windObs.observe(this.lead);
+    this.windObs.observe(this.tail);
   }
+  watchedItems = new Set<Element>();
+  watchItems(els = this.slotEl.assignedElements()) {
+    els.forEach((it, i) => {
 
+      if (!it['__$watched']) {
+        this.broadObs.observe(it);
+        it['__$watched'] = true;
+      }
+      // 从旧监听项删除重叠项，剩下的是移除项
+      else {
+        this.watchedItems.delete(it);
+      }
+    });
+    // 需要解监听的项删除
+    this.watchedItems.forEach(it => {
+      it['__$watched'] = undefined;
+      this.broadObs.unobserve(it);
+    });
+
+    this.watchedItems = new Set(els);
+  }
+  unHandledUnshift = 0;
   emitSliceAndFix(sliceInfo: SliceInfo, isFirstPaint = false) {
+    const preStart = this.start;
+    const curStart = sliceInfo.start;
+    // 将往前移动的数累加到 unHandledHeadDrop 给捕获器处理
+    if(curStart < preStart) {
+      this.unHandledUnshift += preStart - curStart;
+    }
+    this.memo.start = this.start;
+    this.memo.end = this.end;
     Object.assign(this, sliceInfo);
 
-    const pos = this.createPos(++this.fixId);
-    if (isFirstPaint) {
-      this.connectedPos = pos;
-    }
+    const pos = this.createPos(this.fixId++);
+    // if (isFirstPaint) {
+    //   this.connectedPos = pos;
+    // }
     this.e.emit(SLICE_EVENT, pos);
   }
   createPos = (fixId: number) => {
@@ -489,7 +614,8 @@ export class AutoHeight extends HTMLElement {
     const pos = {
       get start() {
         if (!this.filed) {
-          // that.frame.requestFrame(() => that.fix());
+          // 渲染完成后重新评估
+          micro(() => that.boundaryCheck());
           this.filed = true;
         }
         return start;
@@ -501,46 +627,32 @@ export class AutoHeight extends HTMLElement {
   };
 
   RATE = 0.5;
-  overflow: number;
-
   onWheel(e: WheelEvent) {
-    console.log('wheel', e.deltaY > 0 ? '👇🏻' : '👆🏻');
-    if((e.deltaY >= 0 && this.lockScrollDown) || (e.deltaY <= 0 && this.lockScrollUp)) {
+    let dtY = e.deltaY * (e['rate'] || this.RATE);
+    // console.log('wheel', e.deltaY > 0 ? '👇🏻' : '👆🏻');
+    if (((dtY >= 0) && this.lockScrollDown) || ((dtY <= 0) && this.lockScrollUp)) {
       return;
-    }
-    // 向上滚动解锁
-    if(e.deltaY < 0) {
-      this.lockScrollDown = false;
-    }
-    // 向下滚动解锁
-    if(e.deltaY > 0) {
-      this.lockScrollUp = false;
+    } 
+
+    if(this.maxDtY != null) {
+      dtY = Math.min(dtY, this.maxDtY);
+      // 10 - 1 = 9  
+      this.maxDtY -= dtY;
+    } 
+
+    if(this.minDtY != null) {
+      dtY = Math.max(dtY, this.minDtY);
+      //-10 - 1 = -11
+      this.minDtY -= dtY;
     }
 
-    const dtY = e.deltaY * (e['rate'] || this.RATE);
-    const newsTop = this.sTop + dtY;
-    this.setsTop(newsTop);
+    this.setsTop(v => v + dtY);
     return;
   }
   fixId = 0;
-  startItem = {
-    height: 0,
-    /** 被滚动过的区域 */
-    scrolled: 0
-  };
-  endItem = {
-    height: 0,
-    /** 被滚动过的区域 */
-    scrolled: 0
-  };
-  topToPadEnd: number;
-  minDtY: number;
-  maxDtY: number;
   memo = {
     start: 0,
-    end: 0,
-    padStart: 0,
-    padEnd: 0
+    end: 0
   };
   elToI = new Map<Element, number>();
   memoHeight = new Map<number, number>();
@@ -549,190 +661,24 @@ export class AutoHeight extends HTMLElement {
     payload: any;
   };
   sTop = 0;
-  setsTop(v: number) {
-    this.sTop = v;
-    this.list.style.setProperty('transform', `translate3d(0,${-v}px,0)`);
+  cbList = new Set<any>();
+  setsTop(cb: (v: number) => number) {
+    this.sTop = cb(this.sTop);
+    this.list.style.setProperty('transform', `translate3d(0,${-this.sTop}px,0)`);
+    // const hasRaf = this.cbList.size > 0;
+    // this.cbList.add(cb);
+    // if(!hasRaf) {
+    //   requestAnimationFrame(() => {
+    //     let res = this.sTop;
+    //     this.cbList.forEach((cb) => {
+    //       res = cb(res);
+    //     });
+    //     this.sTop = res;
+    //     this.list.style.setProperty('transform', `translate3d(0,${-this.sTop}px,0)`);
+    //     this.cbList.clear();
+    //   })
+    // }
   }
-
-
-  /** 渲染完成后仍然有空白（用户预估项值高于真实值的情况）
-   * 需要继续补充
-   */
-  @Queue(InternalEvent.FillTail)
-  fillTail() {
-    const total = this.getProp('total');
-    const pad = this.getProp('pad');
-    const { topToPadEnd, wrapperHeight } = this;
-    const empty = wrapperHeight - topToPadEnd;
-
-    // 向下一直补到 total 如果还是不满
-
-    const { end } = this.calcEnd(this.memo.padEnd, empty);
-    if (end == null) {
-      console.log('fillTail-wheel');
-      this['__onWheel']({ deltaY: this.topToPadEnd - this.wrapperHeight, rate: 1 } as any);
-      return;
-    }
-
-    console.log('fillTail-add');
-    this.emitSliceAndFix({
-      overflow: this.overflow,
-      start: this.memo.start,
-      padStart: this.memo.padStart,
-      end,
-      padEnd: Math.min(end + pad + 1, total)
-    });
-  }
-
-  @Queue(InternalEvent.ExtraFix)
-  extraScrollToItem(index: number) {
-    const delta = this.calcToItemDelta(index);
-    this['__onWheel']({ deltaY: delta, rate: 1 } as any);
-  }
-
-  /**
-   * TODO: 计算
-   * 计算从某位置开始，需要几项能填满目标高度
-   */
-  calcStart = (from: number, tHeight: number) => {
-    const itemHeight = this.getProp('itemHeight');
-    let i = from;
-    /** 这一项刚好填满 */
-    let start: number;
-    let remain: number;
-    let overflow: number;
-
-    while (0 <= i) {
-      // 在此区间能拿到真实高度
-      if (i >= this.memo.padStart && i < this.memo.padEnd) {
-        const realHeight = this.memoHeight.get(i);
-        if (realHeight >= tHeight) {
-          overflow = realHeight - tHeight;
-          remain = tHeight;
-          start = i;
-          break;
-        } else {
-          tHeight -= realHeight;
-        }
-        i--;
-        continue;
-      }
-
-      if (i < this.memo.padStart) {
-        // [0, i] 是虚拟项
-        const virtualCount = i + 1;
-        // 需要 x 项填满
-        const x = Math.ceil(tHeight / itemHeight);
-        if (virtualCount >= x) {
-          overflow = x * itemHeight - tHeight;
-          remain = itemHeight - overflow;
-          start = i - x + 1;
-          break;
-        }
-        // 不够填满
-        else {
-          tHeight -= virtualCount * itemHeight;
-        }
-        i = -1;
-        continue;
-      }
-
-      //  this.memo.padEnd <= i
-      // [this.memo.padEnd, i] 是虚拟项
-      const virtualCount = i + 1 - this.memo.padEnd;
-      // 需要 x 项填满
-      const x = Math.ceil(tHeight / itemHeight);
-      if (virtualCount >= x) {
-        overflow = x * itemHeight - tHeight;
-        remain = itemHeight - overflow;
-        start = i - x + 1;
-        break;
-      }
-      // 不够填满
-      else {
-        tHeight -= virtualCount * itemHeight;
-      }
-      i = this.memo.padEnd - 1;
-    }
-
-    return {
-      // end 含 -1计算，数组长度极端情况需要更改
-      start: start == null ? start : nature(start),
-      overflow,
-      remain
-    };
-  };
-  calcEnd = (from: number, tHeight: number) => {
-    const total = this.getProp('total');
-    const itemHeight = this.getProp('itemHeight');
-    let i = from;
-    /** 这一项刚好填满 */
-    let end: number;
-    let remain: number;
-    let overflow: number;
-
-    while (i < total) {
-      // 在此区间能拿到真实高度
-      if (i >= this.memo.padStart && i < this.memo.padEnd) {
-        const realHeight = this.memoHeight.get(i);
-        if (realHeight >= tHeight) {
-          overflow = realHeight - tHeight;
-          remain = tHeight;
-          end = i;
-          break;
-        } else {
-          tHeight -= realHeight;
-        }
-        i++;
-        continue;
-      }
-
-      if (i < this.memo.padStart) {
-        // [i, this.memo.padStart) 是虚拟项
-        const virtualCount = this.memo.padStart - i;
-        // 需要 x 项填满
-        const x = Math.ceil(tHeight / itemHeight);
-        // 足够填满： i=0, x = 2; i+x=2 => [0,1,2]是3项❌; i+x-1=1 => [0,1]✅
-        if (virtualCount >= x) {
-          overflow = x * itemHeight - tHeight;
-          remain = itemHeight - overflow;
-          end = i + x - 1;
-          break;
-        }
-        // 不够填满
-        else {
-          tHeight -= virtualCount * itemHeight;
-        }
-        i = this.memo.padStart;
-        continue;
-      }
-
-      // this.memoEnd <= i
-      // [i, total) 是虚拟项
-      const virtualCount = total - i;
-      // 需要 x 项填满
-      const x = Math.ceil(tHeight / itemHeight);
-      // 足够填满： i=0, x = 2; i+x=2 => [0,1,2]是3项❌; i+x-1=1 => [0,1]✅
-      if (virtualCount >= x) {
-        overflow = x * itemHeight - tHeight;
-        remain = itemHeight - overflow;
-        end = i + x - 1;
-        break;
-      }
-      // 不够填满
-      else {
-        tHeight -= virtualCount * itemHeight;
-      }
-      i = total;
-    }
-
-    return {
-      // end 含 -1计算，数组长度极端情况需要更改
-      end: end == null ? end : nature(end),
-      overflow,
-      remain
-    };
-  };
 
   getProp(key: Keys) {
     try {
@@ -744,85 +690,9 @@ export class AutoHeight extends HTMLElement {
       };
     }
   }
-  timeout = 600;
-  // TODO: 滚动过程中 用户重复调用 api
-  scrollv<T extends ScrollVType>(type: T, payload: IScrollV[T]) {
-    const action: Action = {
-      type,
-      payload
-    } as any;
 
-    switch (action.type) {
-      case 'delta':
-        const dt = action.payload.dt;
-        const times = Math.ceil(this.timeout / 16);
-        const absDt = Math.abs(dt);
-        const step = Number((absDt / times).toFixed(2));
-        let realTimes = Math.floor(absDt / step);
-        const last = absDt - realTimes * step;
-        if (last) realTimes++;
-        this._doScroll(realTimes, absDt < 0, step, last);
-        break;
-      case 'toItem':
-        const delta = this.calcToItemDelta(action.payload.index);
-        this.onWheel({ deltaY: delta, rate: 1 } as any);
-        this.fixContext = {
-          type: 'scrollToItem',
-          payload: action.payload.index
-        };
-        break;
-      default:
-        break;
-    }
-  }
-
-  calcToItemDelta(index: number) {
-    const mStart = this.memo.start;
-    let delta: number;
-    if (mStart < index) {
-      const stack = this.getStack(mStart, index);
-      delta = stack - this.startItem.scrolled;
-    } else {
-      const stack = this.getStack(index, mStart);
-      delta = -(stack + this.startItem.scrolled);
-    }
-    return delta;
-  }
-
-  getStack(start: number, end: number) {
-    const itemHeight = this.getProp('itemHeight');
-    let stack = 0;
-    const mStart = this.memo.padStart;
-    const mEnd = this.memo.padEnd;
-    for (let i = start; i < end; ) {
-      if (i < mStart) {
-        // 计算 mStart 前的高度
-        stack += (mStart - start) * itemHeight;
-        i = mStart;
-      } else if (i < mEnd) {
-        stack += this.memoHeight.get(i);
-        i++;
-      } else {
-        stack += (end - mEnd) * itemHeight;
-        i = end;
-      }
-    }
-    return stack;
-  }
-  _doScroll = (remainTimes: number, isNegative: boolean, step: number, last?: number) => {
-    let scrollValue = step;
-    if (remainTimes === 1 && last) scrollValue = last;
-    this.onWheel({ deltaY: isNegative ? -scrollValue : scrollValue, rate: 1 } as any);
-    remainTimes--;
-    if (remainTimes === 0) return;
-    this.frame.requestFrame(() => this._doScroll(remainTimes, isNegative, step, last));
-  };
-
-  visualObs: IntersectionObserver;
-  startPadObs: IntersectionObserver;
-  endPadObs: IntersectionObserver;
-  startVirtualObs: IntersectionObserver;
-  endVirtualObs: IntersectionObserver;
+  broadObs: IntersectionObserver;
+  windObs: IntersectionObserver;
   frame = new FrameScope();
   e = new BaseEvent();
   abortCon = new AbortController();
