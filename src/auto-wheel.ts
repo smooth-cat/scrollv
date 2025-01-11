@@ -333,8 +333,6 @@ export class AutoHeight extends HTMLElement {
     /** 首屏 */
     const fp = this.overflow == null;
     this.memoHeight.clear();
-    this.elToI.forEach((_, el) => this.itemObs.unobserve(el));
-    this.elToI.clear();
 
     const startItemHeight = (this.startItem.height = items[startItemIdx]?.getBoundingClientRect().height || 0);
     /**
@@ -355,10 +353,18 @@ export class AutoHeight extends HTMLElement {
     let topToPadEnd = 0;
     let padToTop = 0;
     let realEnd: number|null = null;
+    const newElToI = new Map<Element, number>();
     for (let i = this.padStart, j = 0; i < this.padEnd; i++, j++) {
       const it = items[j];
-      this.itemObs.observe(it);
-      this.elToI.set(it, i);
+      // 原先监听过的删除，elToI 剩余部分是需要解监听的
+      if(this.elToI.has(it)) {
+        this.elToI.delete(it);
+      } 
+      // 原先未监听过的进行监听
+      else {
+        this.itemObs.observe(it);
+      }
+      newElToI.set(it, i);
       const iRealHeight = it.getBoundingClientRect().height;
       this.memoHeight.set(i, iRealHeight);
       if (i >= this.start) {
@@ -374,6 +380,12 @@ export class AutoHeight extends HTMLElement {
         padToTop += iRealHeight;
       }
     }
+    // 剩余项全部解监听
+    this.elToI.forEach((_, el) => {
+      this.itemObs.unobserve(el);
+    });
+    this.elToI = newElToI;
+
     this.memo = {
       padStart: this.padStart,
       padEnd: this.padEnd,
@@ -752,7 +764,6 @@ export class AutoHeight extends HTMLElement {
       }
     }
   }
-  // TODO: start=0 附近 滚动后缩小 item 项出现头部空白
   @Queue(InternalEvent.ItemResize)
   itemResize(entries: ResizeObserverEntry[]) {
     const total = this.getProp('total');
