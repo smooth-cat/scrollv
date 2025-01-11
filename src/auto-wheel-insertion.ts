@@ -116,6 +116,7 @@ export class AutoHeight extends HTMLElement {
     const id = this.attributes.getNamedItem('id')?.value;
     this.watchDoms();
     Events.emit('init', id, this);
+    this.boundaryCheck();
     // this.calcList(0, true);
     this.firstConnected = false;
   }
@@ -210,10 +211,10 @@ export class AutoHeight extends HTMLElement {
     }
     if (!opts['signal']) opts['signal'] = this.abortCon.signal;
     super.addEventListener(type, listener, opts);
-    // if (type === SLICE_EVENT && this.isConnected) {
-    //   const event = new CustomEvent(SLICE_EVENT, { detail: this.connectedPos });
-    //   this.dispatchEvent(event);
-    // }
+    if (type === SLICE_EVENT && this.isConnected) {
+      const event = new CustomEvent(SLICE_EVENT, { detail: this.connectedPos });
+      this.dispatchEvent(event);
+    }
   }
 
   getAvgHeight = () => {
@@ -241,7 +242,7 @@ export class AutoHeight extends HTMLElement {
     }
 
     const pad = this.getProp('pad');
-    tailBottom = Math.floor(tailBottom);
+    // tailBottom = Math.floor(tailBottom);
 
     /** 因为 observer 是惰性的，修改 dom 后下一个 raf 时 observer 还没触发，因此需要根据实际当前 dom 情况 判断 tail 的真实位置 */
     const realZone =
@@ -277,7 +278,7 @@ export class AutoHeight extends HTMLElement {
       return;
     }
     const pad = this.getProp('pad');
-    leadBottom = Math.ceil(leadBottom);
+    // leadBottom = Math.ceil(leadBottom);
     /** 因为 observer 是惰性的，修改 dom 后下一个 raf 时 observer 还没触发，因此需要根据实际当前 dom 情况 判断 tail 的真实位置 */
     const realZone =
       leadTop >= wrapperTop ? Zone.Visual : leadTop >= wrapperTop - pad ? Zone.StartPad : Zone.StartVirtual;
@@ -386,7 +387,9 @@ export class AutoHeight extends HTMLElement {
         const el = els[i];
         addedTop += el.offsetHeight;
       }
-      this.setsTop(v => v + addedTop);
+      this.setsTopDt(v => v + addedTop, true);
+      this.memo.start = this.start;
+      this.memo.end = this.end;
     }
     const { top: leadTop, bottom: leadBottom } = this.lead.getBoundingClientRect();
     const { top: tailTop, bottom: tailBottom } = this.tail.getBoundingClientRect();
@@ -424,8 +427,7 @@ export class AutoHeight extends HTMLElement {
         wrapperTop
       });
     }
-    this.memo.start = this.start;
-    this.memo.end = this.end;
+
     return needRerender;
   }
 
@@ -459,7 +461,7 @@ export class AutoHeight extends HTMLElement {
         start: this.start + startDelCount,
         end: this.end
       });
-      this.setsTop(v => v - startDel);
+      this.setsTopDt(_ => -startDel);
     }
 
     if (endDel) {
@@ -475,42 +477,37 @@ export class AutoHeight extends HTMLElement {
   handleWind(entries: IEntry[]) {
     const isMount = this.isMount;
     for (const entry of entries) {
-      if (entry.target === this.tail) {
+      // lead 进入 Visual 时优先级比 end 高
+      if (entry.target === this.lead) {
         this.enterOrLeave(entry, {
           enter: () => {
-            if (isMount) {
-              return (this.isMount = false);
-            }
-            const { top: tailTop } = entry.boundingClientRect;
-            const { bottom: wrapperBottom } = entry.rootBounds;
-            const scrollDownDist = wrapperBottom - tailTop;
-            this.setsTop(v => Math.ceil(v - scrollDownDist));
+            const { bottom: leadBottom } = entry.boundingClientRect;
+            const { top: wrapperTop } = entry.rootBounds;
+            const scrollUpDist = leadBottom - wrapperTop;
+            console.log('lead 进入 Visual', leadBottom, wrapperTop);
+            this.setsTopDt(v => Math.floor(v + scrollUpDist + 1), true);
             this.boundaryCheck();
-            console.log('tail 进入 Visual', tailTop, wrapperBottom);
-            this.lockScrollDown = true;
+            this.lockScrollUp = true;
           },
-          leaveFromEnd: () => {
-            this.lockScrollDown = false;
+          leaveFromStart: () => {
+            console.log('lead 离开了 top');
+            this.lockScrollUp = false;
           }
         });
-        continue;
+        return;
       }
       this.enterOrLeave(entry, {
         enter: () => {
-          if (isMount) {
-            return (this.isMount = false);
-          }
-          const { bottom: leadBottom } = entry.boundingClientRect;
-          const { top: wrapperTop } = entry.rootBounds;
-          const scrollUpDist = leadBottom - wrapperTop;
-          console.log('lead 进入 Visual', leadBottom, wrapperTop);
-          this.setsTop(v => Math.ceil(v + scrollUpDist));
+          const { top: tailTop } = entry.boundingClientRect;
+          const { bottom: wrapperBottom } = entry.rootBounds;
+          const scrollDownDist = wrapperBottom - tailTop;
+          console.log('tail 进入 Visual', tailTop, wrapperBottom);
+          this.setsTopDt(v => Math.floor(v - scrollDownDist - 1), true);
           this.boundaryCheck();
-          this.lockScrollUp = true;
+          this.lockScrollDown = true;
         },
-        leaveFromStart: () => {
-          console.log('lead 离开了 top');
-          this.lockScrollUp = false;
+        leaveFromEnd: () => {
+          this.lockScrollDown = false;
         }
       });
     }
@@ -555,7 +552,7 @@ export class AutoHeight extends HTMLElement {
     this.windObs = new IntersectionObserver(this.handleWind.bind(this), {
       root: this.wrapper,
       threshold: 1,
-      rootMargin: `-1px 0px 0px -1px`
+      rootMargin: `-1px 0px -1px 0px`
     });
     this.broadObs = new IntersectionObserver(this.handleBroad.bind(this), {
       root: this.wrapper,
@@ -601,9 +598,9 @@ export class AutoHeight extends HTMLElement {
     Object.assign(this, sliceInfo);
 
     const pos = this.createPos(this.fixId++);
-    // if (isFirstPaint) {
-    //   this.connectedPos = pos;
-    // }
+    if (!this.connectedPos) {
+      this.connectedPos = pos;
+    }
     this.e.emit(SLICE_EVENT, pos);
   }
   createPos = (fixId: number) => {
@@ -634,19 +631,7 @@ export class AutoHeight extends HTMLElement {
       return;
     } 
 
-    if(this.maxDtY != null) {
-      dtY = Math.min(dtY, this.maxDtY);
-      // 10 - 1 = 9  
-      this.maxDtY -= dtY;
-    } 
-
-    if(this.minDtY != null) {
-      dtY = Math.max(dtY, this.minDtY);
-      //-10 - 1 = -11
-      this.minDtY -= dtY;
-    }
-
-    this.setsTop(v => v + dtY);
+    this.setsTopDt(_ => dtY);
     return;
   }
   fixId = 0;
@@ -662,8 +647,25 @@ export class AutoHeight extends HTMLElement {
   };
   sTop = 0;
   cbList = new Set<any>();
-  setsTop(cb: (v: number) => number) {
-    this.sTop = cb(this.sTop);
+  setsTopDt(cb: (v: number) => number, issTop = false) {
+    if(issTop) {
+      this.sTop = cb(this.sTop)
+    } 
+    else {
+      let dtY = cb(this.sTop);
+      if(this.maxDtY != null) {
+        dtY = Math.min(dtY, this.maxDtY);
+        // 10 - 1 = 9  
+        this.maxDtY -= dtY;
+      } 
+  
+      if(this.minDtY != null) {
+        dtY = Math.max(dtY, this.minDtY);
+        //-10 - 1 = -11
+        this.minDtY -= dtY;
+      }
+      this.sTop += dtY;
+    }
     this.list.style.setProperty('transform', `translate3d(0,${-this.sTop}px,0)`);
     // const hasRaf = this.cbList.size > 0;
     // this.cbList.add(cb);

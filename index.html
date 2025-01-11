@@ -51,7 +51,7 @@
       <button id="expandBtn" style="flex: none;">展开</button>
     </div>
     <div id="theOne" style="border: 2px solid green; flex: 1; height: 1px;">
-      <scroll-v id="scroll" style="height: 100%;" total="10" itemHeight="150" pad="300" />
+      <scroll-v id="scroll" style="height: 100%;" total="10" itemHeight="150" pad="2" />
     </div>
   </div>
   <div style="height: 100%; display: flex; flex-direction: column; width: 400px;">
@@ -79,7 +79,7 @@
     eventMap.clear();
 
     scroll.innerHTML = html;
-    const its = document.getElementsByClassName('item');
+    const its = document.querySelectorAll('#scroll>.item');
 
     for (let i = 0; i < its.length; i++) {
       const element = its[i];
@@ -100,26 +100,26 @@
 
   });
 
-
+  let abortCon = new AbortController();
   scroll2.addEventListener('slice', (e) => {
     const { start, end } = e.detail;
     const html = data.slice(start, end).map(({ h5, expand }, i) => {
       const isSingle = (start + i) % 2 === 1;
       return `<div class="${isSingle ? 'blue' : 'red'} ${expand ? 'expand' : 'shrink'} item">${h5}</div>`
     }).join('');
-    eventMap.forEach((fn, element) => {
-      element.removeEventListener('click', fn);
-    })
-    eventMap.clear();
-
+    abortCon.abort();
+    abortCon = new AbortController();
     scroll2.innerHTML = html;
-    const its = document.getElementsByClassName('item');
+    const its = document.querySelectorAll('#scroll2>.item');
 
     for (let i = 0; i < its.length; i++) {
       const element = its[i];
       const j = start + i;
       const fn = () => {
         const { height } = element.getBoundingClientRect();
+        if(!data[j]) {
+          debugger;
+        }
         const newExpand = !data[j].expand;
         data[j].expand = newExpand;
         if (newExpand) {
@@ -128,8 +128,7 @@
           element.style.setProperty('height', '30px')
         }
       };
-      element.addEventListener('click', fn);
-      eventMap.set(element, fn);
+      element.addEventListener('click', fn, { signal: abortCon.signal });
     }
 
   });
