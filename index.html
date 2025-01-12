@@ -43,15 +43,15 @@
 <body style="height: 80vh; display: flex;">
   <div style="height: 100%; display: flex; flex-direction: column; width: 400px;">
     <div>
-      <button id="dty" style="width: 60px;">跳转</button>
-      <input id="ipt" placeholder="index滚动" style="width: 60px;" />
+      <button id="dty" >跳转</button>
+      <input id="ipt" placeholder="index滚动" style="width: 50px;" />
+      <input id="dt" placeholder="DT" style="width: 50px;" />
       <button id="switchBtn" style="flex: none;">切换位置</button>
       <button id="destroyBtn" style="flex: none;">删除</button>
       <button id="foldBtn" style="flex: none;">折叠</button>
       <button id="expandBtn" style="flex: none;">展开</button>
     </div>
     <div id="theOne" style="border: 2px solid green; flex: 1; height: 1px;">
-      <scroll-v id="scroll" style="height: 100%;" total="10" itemHeight="150" pad="2" />
     </div>
   </div>
   <div style="height: 100%; display: flex; flex-direction: column; width: 400px;">
@@ -65,7 +65,15 @@
 </body>
 <script>
   const eventMap = new Map();
-  const scroll = document.getElementById('scroll');
+  const scroll = document.createElement('scroll-v');
+  scroll.setAttribute('id', 'scroll');
+  scroll.setAttribute('style', 'height: 100%;');
+  scroll.setAttribute('total', '10');
+  scroll.setAttribute('itemHeight', '150');
+  scroll.setAttribute('pad', '2');
+  scroll.scrollv('toItem', { index: 2, dt: 10 });
+  theOne.appendChild(scroll);
+
   const data = Array.from({ length: 10 }, (_, i) => ({ expand: true, h5: `第${i}项<br/>${window.Mock.Random.paragraph()}` }))
   scroll.addEventListener('slice', (e) => {
     const { start, end } = e.detail;
@@ -178,18 +186,28 @@
   //   }
   // });
 
-  ipt.addEventListener('keydown', (e) => {
+  function toItem1(e) {
     if (e && e.keyCode === 13) {
       try {
         const num = parseInt(ipt.value, 10);
-        scroll.scrollv('toItem', { index: num })
+        let delta;
+        try{
+          delta = parseInt(dt.value, 10);
+        } catch(e) {
+          delta = 0;
+        }
+        isNaN(delta) && (delta = 0); 
+        scroll.scrollv('toItem', { index: num, dt: delta })
       } catch (err) {
         console.error(`转换${ipt.value}失败`, err);
       } finally {
         ipt.value = '';
       }
+
     }
-  });
+  }
+  ipt.addEventListener('keydown', toItem1);
+  dt.addEventListener('keydown', toItem1);
 
   switchBtn.addEventListener('click', () => {
     if (theOne.contains(scroll)) {

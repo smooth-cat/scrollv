@@ -26,6 +26,7 @@ type DeltaPayload = {
 type ToItemPayload = {
   /** 需要滚动到的项 */
   index: number;
+  dt?: number;
 };
 
 type IScrollV = {
@@ -87,7 +88,7 @@ export class AutoHeight extends HTMLElement {
     const id = this.attributes.getNamedItem('id')?.value;
     this.watchDoms();
     Events.emit('init', id, this);
-    this.calcList(0, true);
+    this.calcList(this.start, true);
     this.firstConnected = false;
   }
 
@@ -344,6 +345,7 @@ export class AutoHeight extends HTMLElement {
     if (isStartVirtual) {
       this.overflow = startItemHeight;
     }
+    this.overflow = this.overflow ?? startItemHeight;
     // if (isStartVirtual && Math.abs(this.overflow - itemHeight) < 10) {
     //   this.overflow = startItemHeight;
     // }
@@ -368,7 +370,7 @@ export class AutoHeight extends HTMLElement {
       const iRealHeight = it.getBoundingClientRect().height;
       this.memoHeight.set(i, iRealHeight);
       if (i >= this.start) {
-        topToPadEnd += i === this.start ? this.overflow ?? iRealHeight : iRealHeight;
+        topToPadEnd += i === this.start ? this.overflow : iRealHeight;
         // end 并不能代表这次最终渲染的真实 end，需要再次通过累积 得出真实 end
         if (realEnd == null && topToPadEnd >= this.wrapperHeight) {
           realEnd = i;
@@ -410,10 +412,9 @@ export class AutoHeight extends HTMLElement {
     const minDtY = -(this.padStart * itemHeight + padToTop - (this.overflow ?? this.startItem.height));
     this.minDtY = minDtY;
     // 非首屏设置偏移量
-    if (!fp) {
-      this.startItem.scrolled = this.startItem.height - this.overflow;
-      this.setTranslateY(-(padToTop - this.overflow));
-    }
+    this.startItem.scrolled = this.startItem.height - this.overflow;
+    this.setTranslateY(-(padToTop - this.overflow));
+   
 
     // 已渲染的 dom 填不满容器
     if(realEnd == null) {
@@ -429,10 +430,12 @@ export class AutoHeight extends HTMLElement {
     const { type, payload } = this.fixContext;
     switch (type) {
       case 'scrollToItem':
-        const index = payload;
+        const { index, dt } = payload;
         // 如果 index 项在视口内则不需要移动 TODO: 单item项测试
-        if ((this.memo.start <= index && index < this.memo.end) || this.memo.start === this.memo.end) break;
-        this.extraScrollToItem(index);
+        // if ((this.memo.start <= index && index < this.memo.end) || this.memo.start === this.memo.end) break;
+        if(dt) {
+          this.extraScrollToItem(index, dt);
+        }
         break;
       default:
         break;
@@ -471,9 +474,8 @@ export class AutoHeight extends HTMLElement {
   }
 
   @Queue(InternalEvent.ExtraFix)
-  extraScrollToItem(index: number) {
-    const delta = this.calcToItemDelta(index);
-    this['__onWheel']({ deltaY: delta, rate: 1 } as any);
+  extraScrollToItem(index: number, dt = 0) {
+    this['__onWheel']({ deltaY: dt, rate: 1 } as any);
   }
 
   calcList(start: number, isFirstPaint = false) {
@@ -483,7 +485,7 @@ export class AutoHeight extends HTMLElement {
       // 列表高度 依赖 data
       const { end = nature(total - 1) } = this.calcEnd(start, this.wrapperHeight);
       this.emitSliceAndFix({
-        overflow: this.overflow,
+        overflow: undefined,
         start,
         padStart: nature(start - pad),
         end: Math.min(end, total),
@@ -667,11 +669,16 @@ export class AutoHeight extends HTMLElement {
         this._doScroll(realTimes, absDt < 0, step, last);
         break;
       case 'toItem':
-        const delta = this.calcToItemDelta(action.payload.index);
-        this.onWheel({ deltaY: delta, rate: 1 } as any);
+        if(this.firstConnected) {
+          this.start = action.payload.index;
+        } else {
+          this.calcList(action.payload.index)
+        }
+        // const delta = this.calcToItemDelta(action.payload.index, action.payload.dt);
+        // this.onWheel({ deltaY: delta, rate: 1 } as any);
         this.fixContext = {
           type: 'scrollToItem',
-          payload: action.payload.index
+          payload: action.payload
         };
         break;
       default:
@@ -679,7 +686,7 @@ export class AutoHeight extends HTMLElement {
     }
   }
 
-  calcToItemDelta(index: number) {
+  calcToItemDelta(index: number, dt = 0) {
     const mStart = this.memo.start;
     let delta: number;
     if (mStart < index) {
@@ -689,7 +696,7 @@ export class AutoHeight extends HTMLElement {
       const stack = this.getStack(index, mStart);
       delta = -(stack + this.startItem.scrolled);
     }
-    return delta;
+    return delta + dt;
   }
 
   getStack(start: number, end: number) {
