@@ -59,22 +59,23 @@
       <button style="flex: none;">占位</button>
     </div>
     <div id="another" style="border: 2px solid black; flex: 1; height: 1px;">
-      <scroll-vv id="scroll2" style="height: 100%;" total="10" itemHeight="150" pad="300" />
     </div>
   </div>
 </body>
 <script>
   const eventMap = new Map();
+  const tota = 50
   const scroll = document.createElement('scroll-v');
   scroll.setAttribute('id', 'scroll');
   scroll.setAttribute('style', 'height: 100%;');
-  scroll.setAttribute('total', '10');
+  scroll.setAttribute('total', tota+'');
   scroll.setAttribute('itemHeight', '150');
   scroll.setAttribute('pad', '2');
-  scroll.scrollv('toItem', { index: 2, dt: 10 });
+  scroll.setAttribute('rate', '0.3');
+  scroll.setAttribute('passive', '');
   theOne.appendChild(scroll);
 
-  const data = Array.from({ length: 10 }, (_, i) => ({ expand: true, h5: `第${i}项<br/>${window.Mock.Random.paragraph()}` }))
+  const data = Array.from({ length: tota }, (_, i) => ({ expand: true, h5: `第${i}项<br/>${window.Mock.Random.paragraph()}` }))
   scroll.addEventListener('slice', (e) => {
     const { start, end } = e.detail;
     const html = data.slice(start, end).map(({ h5, expand }, i) => {
@@ -109,6 +110,14 @@
   });
 
   let abortCon = new AbortController();
+
+  const scroll2 = document.createElement('scroll-vv');
+  scroll2.setAttribute('id', 'scroll2');
+  scroll2.setAttribute('style', 'height: 100%;');
+  scroll2.setAttribute('total', tota+'');
+  scroll2.setAttribute('itemHeight', '150');
+  scroll2.setAttribute('pad', '300');
+  another.appendChild(scroll2);
   scroll2.addEventListener('slice', (e) => {
     const { start, end } = e.detail;
     const html = data.slice(start, end).map(({ h5, expand }, i) => {
@@ -220,7 +229,7 @@
     scroll.destroy();
   })
   foldBtn.addEventListener('click', () => {
-    const its = document.getElementsByClassName('item');
+    const its = document.querySelectorAll('#scroll>.item');
     for (let i = 0; i < its.length; i++) {
       const element = its[i];
       element.style.setProperty('height', '30px')
@@ -230,7 +239,7 @@
     })
   })
   expandBtn.addEventListener('click', () => {
-    const its = document.getElementsByClassName('item');
+    const its = document.querySelectorAll('#scroll>.item');
     for (let i = 0; i < its.length; i++) {
       const element = its[i];
       element.style.setProperty('height', 'auto')

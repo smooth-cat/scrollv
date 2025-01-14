@@ -7,8 +7,13 @@ const SLICE_EVENT = 'slice';
 const keys = {
   total: undefined,
   itemHeight: undefined,
-  pad: undefined
+  pad: undefined,
+  resizeDebounce: undefined,
+  rate: undefined,
+  passive: undefined,
 };
+
+const optionalKeys = ['rate', 'resizeDebounce', 'passive'];
 
 export type Keys = keyof typeof keys;
 
@@ -81,7 +86,7 @@ export class AutoHeight extends HTMLElement {
   firstConnected = true;
 
   /** append 🪝 */
-  @Queue(InternalEvent.Connected)
+  // @Queue(InternalEvent.Connected)
   connectedCallback() {
     if (!this.firstConnected) return;
     console.log('connected isConnected', this.isConnected);
@@ -178,20 +183,33 @@ export class AutoHeight extends HTMLElement {
 
   watchDoms() {
     this.wrapper = this.shadow.getElementById('wrapper');
+    const resizeDebounce = this.getRawProp('resizeDebounce');
     window['wrapper'] = this.wrapper;
     this.list = this.shadow.getElementById('list');
     this.slotEl = this.shadow.getElementById('slot') as any;
     this.wrapperHeight = this.wrapper.offsetHeight;
+    this.itemObs = new ResizeObserver(
+      resizeDebounce != null
+        ? debounce<ResizeObserverCallback>(entries => {
+            this.itemResize(entries);
+          }, 16)
+        : this.itemResize.bind(this)
+    );
+
+
     this.wrapperObs.observe(this.wrapper);
     // 滚动幅度小，diff 算法可能不会触发 slotchange，导致 transform 不变更
     // this.slotEl.addEventListener('slotchange', this.fix.bind(this), { signal: this.abortCon.signal })
+    const usePassive = this.getRawProp('passive') != null;
     this.wrapper.addEventListener(
       'wheel',
       e => {
-        e.preventDefault();
+        if(!usePassive) {
+          e.preventDefault();
+        }
         this.onWheel(e);
       },
-      { passive: false, signal: this.abortCon.signal }
+      { passive: usePassive, signal: this.abortCon.signal }
     );
   }
   /** 通过 sliceInfo 约束 emit 过程中需要提前设置的属性，避免漏设置 */
@@ -210,10 +228,15 @@ export class AutoHeight extends HTMLElement {
     const that = this;
     const start = that.padStart;
     const end = that.padEnd;
+    const useMicroFix = that.useMicroFix;
     const pos = {
       get start() {
         if (!this.filed) {
-          that.frame.requestFrame(() => that.fix());
+          if(useMicroFix) {
+            micro(() => that.fix(useMicroFix))
+          } else {
+            that.frame.requestFrame(() => that.fix(useMicroFix));
+          }
           this.filed = true;
         }
         return start;
@@ -228,7 +251,7 @@ export class AutoHeight extends HTMLElement {
   overflow: number;
   @Queue(InternalEvent.Scroll)
   onWheel(e: WheelEvent) {
-    const rate = e['rate'] ?? this.RATE;
+    const rate = e['rate'] ?? (this.getProp('rate') || this.RATE);
     const scrolled = this.startItem.scrolled;
     const pad = this.getProp('pad');
     const total = this.getProp('total');
@@ -298,6 +321,7 @@ export class AutoHeight extends HTMLElement {
     type: string;
     payload: any;
   };
+  useMicroFix = false;
   translateY = 0;
   setTranslateY(v: number) {
     this.translateY = v;
@@ -307,7 +331,7 @@ export class AutoHeight extends HTMLElement {
   fixedId = 0;
   // TODO: 考虑用户其他对列表项 的 增删移操作时，导致一个 block 后出现多个 unblock
   @UnBlockQueue()
-  fix() {
+  fix(useMicroFix = false) {
     const items = this.slotEl.assignedElements();
     if(!items.length) {
       return;
@@ -332,7 +356,6 @@ export class AutoHeight extends HTMLElement {
     // const isEndVirtual = this.end >= this.memo.padEnd;
 
     /** 首屏 */
-    const fp = this.overflow == null;
     this.memoHeight.clear();
 
     const startItemHeight = (this.startItem.height = items[startItemIdx]?.getBoundingClientRect().height || 0);
@@ -418,8 +441,10 @@ export class AutoHeight extends HTMLElement {
 
     // 已渲染的 dom 填不满容器
     if(realEnd == null) {
-      this.fillTail();
-    } 
+      this.fillTail(useMicroFix);
+    } else {
+      this.useMicroFix = false;
+    }
     // 如果尾部没问题再修复首部
     // else if() {
 
@@ -447,8 +472,8 @@ export class AutoHeight extends HTMLElement {
    * 需要继续补充
    */
   @Queue(InternalEvent.FillTail)
-  fillTail() {
-    
+  fillTail(useMicroFix=false) {
+    this.useMicroFix = useMicroFix;
     const total = this.getProp('total');
     const pad = this.getProp('pad');
     const { topToPadEnd, wrapperHeight } = this;
@@ -465,7 +490,7 @@ export class AutoHeight extends HTMLElement {
     
     console.log('fillTail-add');
     this.emitSliceAndFix({
-      overflow: this.overflow,
+      overflow: this.startItem.height - this.startItem.scrolled,
       start: this.memo.start,
       padStart: this.memo.padStart,
       end,
@@ -478,6 +503,7 @@ export class AutoHeight extends HTMLElement {
     this['__onWheel']({ deltaY: dt, rate: 1 } as any);
   }
 
+  @Queue(InternalEvent.CalcList)
   calcList(start: number, isFirstPaint = false) {
     try {
       const pad = this.getProp('pad');
@@ -643,11 +669,19 @@ export class AutoHeight extends HTMLElement {
     try {
       return Number(this.attributes.getNamedItem(key).value);
     } catch (error) {
+      if(optionalKeys.includes(key)) {
+        return undefined;
+      }
+
       throw {
         message: `未传入属性${key}!`,
         raw: error
       };
     }
+  }
+
+  getRawProp(key: Keys) {
+    return this.attributes.getNamedItem(key)?.value;
   }
   timeout = 600;
   // TODO: 滚动过程中 用户重复调用 api
@@ -735,10 +769,11 @@ export class AutoHeight extends HTMLElement {
     const total = this.getProp('total');
     for (const entry of entries) {
       if (entry.target === this.wrapper) {
-        const { height: newHeight } = entry.target.getBoundingClientRect();
+        // const { height: newHeight } = entry.target.getBoundingClientRect();
+        const { blockSize: newHeight } = entry.borderBoxSize[0];
         const oldHeight = this.wrapperHeight;
         if (oldHeight === newHeight) break;
-        console.log('wrapper 大小发生变化');
+        console.log('wrapper 大小发生变化', newHeight);
         this.wrapperHeight = newHeight;
         // 容器升高了，maxDtY 减少了
         const dtContainer = newHeight - oldHeight;
@@ -749,7 +784,7 @@ export class AutoHeight extends HTMLElement {
 
           if (newEnd != null) {
             this.emitSliceAndFix({
-              overflow: this.overflow,
+              overflow: this.startItem.height - this.startItem.scrolled,
               start: this.memo.start,
               padStart: this.memo.padStart,
               end: newEnd,
@@ -771,6 +806,8 @@ export class AutoHeight extends HTMLElement {
       }
     }
   }
+  // TODO: 过渡动画时出现问题，虽然 start 标记的是 1 但是 translateY 计算错误
+  //       目前已确定，原因在于 resizeObserver 执行后，下一帧 raf 获取到 overflow 不正确导致的
   @Queue(InternalEvent.ItemResize)
   itemResize(entries: ResizeObserverEntry[]) {
     const total = this.getProp('total');
@@ -782,14 +819,14 @@ export class AutoHeight extends HTMLElement {
     let startDt: number | null = null;
     /** scrolled 占总高的百分比 */
     const startScrolledRate = this.startItem.height === 0 ? 0 : this.startItem.scrolled / this.startItem.height;
-
     for (const entry of entries) {
       const el = entry.target;
       const i = this.elToI.get(el);
       if (i == null) continue;
       const oldHeight = this.memoHeight.get(i);
       // TODO: 使用 InsertionObserver 优化 getBoundingClientRect
-      const { height: newHeight } = entry.target.getBoundingClientRect();
+      // const { height: newHeight } = entry.target.getBoundingClientRect();
+      const { blockSize: newHeight } = entry.borderBoxSize[0];
       if (oldHeight === newHeight || newHeight === 0) continue;
       hasResize = true;
       this.memoHeight.set(i, newHeight);
@@ -835,6 +872,7 @@ export class AutoHeight extends HTMLElement {
     const { end: newEnd, remain } = this.calcEnd(this.memo.start, this.startItem.scrolled + this.wrapperHeight);
     // 无法填满的情况，需要向上滚动 padEnd ~ 屏幕底部 的距离
     if (newEnd == null) {
+      this.useMicroFix = true;
       this['__onWheel']({ deltaY: this.topToPadEnd - this.wrapperHeight, rate: 1 } as any);
     }
     // 如果新 end 在 padEnd 之内，则只需修改 endItem 相关
@@ -845,6 +883,7 @@ export class AutoHeight extends HTMLElement {
     }
     // 新 end 在 padEnd 之外，则需要重新渲染
     else {
+      this.useMicroFix = true;
       this.emitSliceAndFix({
         overflow: this.startItem.height - this.startItem.scrolled,
         start: this.memo.start,
@@ -864,7 +903,7 @@ export class AutoHeight extends HTMLElement {
       this.wrapperResize(entries);
     })
   );
-  itemObs = new ResizeObserver(this.itemResize.bind(this));
+  itemObs: ResizeObserver;
   frame = new FrameScope();
   e = new BaseEvent();
   abortCon = new AbortController();

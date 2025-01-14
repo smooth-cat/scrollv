@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document</title>
+</head>
+<style>
+  #main{
+    background-color: pink;
+    height: 24px;
+  }
+</style>
+<body>
+  <button id="btn">修改</button>
+  <div id="main" >123</div>
+</body>
+<script>
+  window.addEventListener('error', (e) => {
+    console.error('错误信息是',e);
+  });
+ 
+  let height = 24
+  function setHeight() {
+    height++;
+    main.style.setProperty('height', `${height}px`);
+  }
+  btn.addEventListener('click', () => {
+    setHeight();
+  })
+  const main = document.getElementById('main');
+  try {
+    const obs = new ResizeObserver(([entry]) => {
+      try {       
+        console.log('高度变化', entry.target.getBoundingClientRect().height);
+        if(height < 40) {
+          setHeight();
+        }
+      } catch (error) {
+        
+      }
+    });
+    obs.observe(main);
+  } catch (error) {
+    console.log('catch捕获', error);
+  }
+</script>
+</html>

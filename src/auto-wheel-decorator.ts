@@ -3,6 +3,8 @@ import { cNoop } from './util';
 export enum InternalEvent {
   /** 初始化 */
   Connected = 'Connected',
+  /** 重渲 list */
+  CalcList = 'CalcList',
   /** 一切与 scroll 相关的 */
   Scroll = 'Scroll',
   /** 容器高度变化 */
@@ -31,6 +33,8 @@ export enum EventPriority {
 const InternalEvent2Priority = {
   /** 初始化 */
   [InternalEvent.Connected]: EventPriority.Normal,
+  /** 重渲 list */
+  [InternalEvent.CalcList]: EventPriority.Normal,
   /** 一切与 scroll 相关的 */
   [InternalEvent.Scroll]: EventPriority.Normal,
   /** 容器高度变化 */
