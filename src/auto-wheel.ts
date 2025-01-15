@@ -160,12 +160,16 @@ export class AutoHeight extends HTMLElement {
     });
     window['ins'] = this;
   }
-
+  customListChange: EventListenerOrEventListenerObject;
   addEventListener(
     type: string,
     listener: EventListenerOrEventListenerObject,
     options?: boolean | EventListenerOptions
   ): void {
+    if(type === 'listchange') {
+      this.customListChange = listener;
+      return;
+    }
     // 在组件销毁时自动解除所有监听
     let opts: EventListenerOptions = {};
     if (typeof options === 'boolean') {
@@ -195,11 +199,21 @@ export class AutoHeight extends HTMLElement {
           }, 16)
         : this.itemResize.bind(this)
     );
-
+    
+    this.slotEl.addEventListener('slotchange', () => {
+      const els = this.slotEl.assignedElements();
+      const withoutChild = !els.length;
+      const hasFrame = this.frame.frameIds.size > 0;
+      /** 
+       * 1. 没有任何子项，不管 TODO: 后续处理
+       * 2. 当前派发了 RAF 任务来处理，不管
+       * 3，ResizeObserver 正在通过微任务处理，不管
+       */
+      if(withoutChild || hasFrame || this.useMicroFix) return;
+      this.onListChange(els as any);
+    }, { signal: this.abortCon.signal });
 
     this.wrapperObs.observe(this.wrapper);
-    // 滚动幅度小，diff 算法可能不会触发 slotchange，导致 transform 不变更
-    // this.slotEl.addEventListener('slotchange', this.fix.bind(this), { signal: this.abortCon.signal })
     const usePassive = this.getRawProp('passive') != null;
     this.wrapper.addEventListener(
       'wheel',
@@ -212,6 +226,27 @@ export class AutoHeight extends HTMLElement {
       { passive: usePassive, signal: this.abortCon.signal }
     );
   }
+
+  @Queue(InternalEvent.ListChange)
+  onListChange(els: HTMLElement[]) {
+    if(typeof this.customListChange === 'function') {
+      this.customListChange({ detail: els } as any);
+      return;
+    }
+    const first = els[0];
+    const total = this.getProp('total');
+    const preOverflow = this.startItem.height - this.startItem.scrolled;
+    const overflow = Math.min(first.offsetHeight, preOverflow); 
+    // 新 total 和 padStart
+    this.emitSliceAndFix({
+      overflow,
+      start: Math.min(this.start, total - 1),
+      padStart: Math.min(this.padStart, total - 1),
+      end: Math.min(this.end, total - 1),
+      padEnd: Math.min(this.padEnd, total)
+    });
+  }
+
   /** 通过 sliceInfo 约束 emit 过程中需要提前设置的属性，避免漏设置 */
   @BlockQueue()
   emitSliceAndFix(sliceInfo: SliceInfo, isFirstPaint = false) {

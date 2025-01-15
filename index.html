@@ -43,10 +43,10 @@
 <body style="height: 80vh; display: flex;">
   <div style="height: 100%; display: flex; flex-direction: column; width: 400px;">
     <div>
-      <button id="dty" >跳转</button>
+      <button id="dty">跳转</button>
       <input id="ipt" placeholder="index滚动" style="width: 50px;" />
       <input id="dt" placeholder="DT" style="width: 50px;" />
-      <button id="switchBtn" style="flex: none;">切换位置</button>
+      <button id="delItem" style="flex: none;">删除项</button>
       <button id="destroyBtn" style="flex: none;">删除</button>
       <button id="foldBtn" style="flex: none;">折叠</button>
       <button id="expandBtn" style="flex: none;">展开</button>
@@ -64,11 +64,11 @@
 </body>
 <script>
   const eventMap = new Map();
-  const tota = 50
+  let tota = 50
   const scroll = document.createElement('scroll-v');
   scroll.setAttribute('id', 'scroll');
   scroll.setAttribute('style', 'height: 100%;');
-  scroll.setAttribute('total', tota+'');
+  scroll.setAttribute('total', tota + '');
   scroll.setAttribute('itemHeight', '150');
   scroll.setAttribute('pad', '2');
   scroll.setAttribute('rate', '0.3');
@@ -76,8 +76,12 @@
   theOne.appendChild(scroll);
 
   const data = Array.from({ length: tota }, (_, i) => ({ expand: true, h5: `第${i}项<br/>${window.Mock.Random.paragraph()}` }))
-  scroll.addEventListener('slice', (e) => {
+  let lastStart, lastEnd;
+  scroll.addEventListener('slice', onSlice);
+  function onSlice (e) {
     const { start, end } = e.detail;
+    lastStart = start;
+    lastEnd = end;
     const html = data.slice(start, end).map(({ h5, expand }, i) => {
       const isSingle = (start + i) % 2 === 1;
       return `<div class="${isSingle ? 'blue' : 'red'} ${expand ? 'expand' : 'shrink'} item">${h5}</div>`
@@ -106,56 +110,16 @@
       element.addEventListener('click', fn);
       eventMap.set(element, fn);
     }
+  }
 
-  });
 
-  let abortCon = new AbortController();
-
-  const scroll2 = document.createElement('scroll-vv');
-  scroll2.setAttribute('id', 'scroll2');
-  scroll2.setAttribute('style', 'height: 100%;');
-  scroll2.setAttribute('total', tota+'');
-  scroll2.setAttribute('itemHeight', '150');
-  scroll2.setAttribute('pad', '300');
-  another.appendChild(scroll2);
-  scroll2.addEventListener('slice', (e) => {
-    const { start, end } = e.detail;
-    const html = data.slice(start, end).map(({ h5, expand }, i) => {
-      const isSingle = (start + i) % 2 === 1;
-      return `<div class="${isSingle ? 'blue' : 'red'} ${expand ? 'expand' : 'shrink'} item">${h5}</div>`
-    }).join('');
-    abortCon.abort();
-    abortCon = new AbortController();
-    scroll2.innerHTML = html;
-    const its = document.querySelectorAll('#scroll2>.item');
-
-    for (let i = 0; i < its.length; i++) {
-      const element = its[i];
-      const j = start + i;
-      const fn = () => {
-        const { height } = element.getBoundingClientRect();
-        if(!data[j]) {
-          debugger;
-        }
-        const newExpand = !data[j].expand;
-        data[j].expand = newExpand;
-        if (newExpand) {
-          element.style.setProperty('height', 'auto')
-        } else {
-          element.style.setProperty('height', '30px')
-        }
-      };
-      element.addEventListener('click', fn, { signal: abortCon.signal });
-    }
-
-  });
 
   let toDown = true;
   dty.addEventListener('click', (e) => {
     try {
       // const num = parseInt(dty.value, 10);
       const num = toDown ? 11000 : -9000;
-      toDown=!toDown;
+      toDown = !toDown;
       const step = Math.ceil(num / 60);
       let count = 0;
       const interval = setInterval(() => {
@@ -172,40 +136,18 @@
       dty.value = '';
     }
   });
-  // dty.addEventListener('keydown', (e) => {
-  //   if(e && e.keyCode === 13) {
-  //     try {
-  //       // const num = parseInt(dty.value, 10);
-  //       const num = 13000
-  //       const step = Math.ceil(num / 60);
-  //       let count = 0;
-  //       const interval = setInterval(() => {
-  //         if(count === 60) {
-  //           clearInterval(interval);
-  //           return;
-  //         }
-  //         scroll.onWheel({ deltaY: step, rate: 1 })
-  //         count++;
-  //       }, 0);
-  //     } catch (err) {
-  //       console.error(`转换${dty.value}失败`, err);
-  //     } finally {
-  //       dty.value = '';
-  //     }
-  //   }
-  // });
 
-  function toItem1(e) {
+  function toItem1 (e) {
     if (e && e.keyCode === 13) {
       try {
         const num = parseInt(ipt.value, 10);
         let delta;
-        try{
+        try {
           delta = parseInt(dt.value, 10);
-        } catch(e) {
+        } catch (e) {
           delta = 0;
         }
-        isNaN(delta) && (delta = 0); 
+        isNaN(delta) && (delta = 0);
         scroll.scrollv('toItem', { index: num, dt: delta })
       } catch (err) {
         console.error(`转换${ipt.value}失败`, err);
@@ -218,12 +160,24 @@
   ipt.addEventListener('keydown', toItem1);
   dt.addEventListener('keydown', toItem1);
 
-  switchBtn.addEventListener('click', () => {
-    if (theOne.contains(scroll)) {
-      another.appendChild(scroll);
-    } else {
-      theOne.appendChild(scroll);
+  scroll.addEventListener('listchange', () => {
+    scroll.scrollv('toItem', { index: 0 })
+  })
+
+  delItem.addEventListener('click', () => {
+    data.splice(24, 1);
+    tota = 49;
+    scroll.setAttribute('total', tota + '');
+    // 不在可视范围内的删除
+    if(24 < lastStart  ||  24 >= lastEnd) {
+      return;
     }
+    onSlice({
+      detail: {
+        lastStart,
+        lastEnd,
+      }
+    })
   })
   destroyBtn.addEventListener('click', () => {
     scroll.destroy();
@@ -248,6 +202,49 @@
       it.expand = true;
     })
   })
+
+
+  let abortCon = new AbortController();
+
+  const scroll2 = document.createElement('scroll-vv');
+  scroll2.setAttribute('id', 'scroll2');
+  scroll2.setAttribute('style', 'height: 100%;');
+  scroll2.setAttribute('total', tota + '');
+  scroll2.setAttribute('itemHeight', '150');
+  scroll2.setAttribute('pad', '300');
+  another.appendChild(scroll2);
+  scroll2.addEventListener('slice', (e) => {
+    const { start, end } = e.detail;
+    const html = data.slice(start, end).map(({ h5, expand }, i) => {
+      const isSingle = (start + i) % 2 === 1;
+      return `<div class="${isSingle ? 'blue' : 'red'} ${expand ? 'expand' : 'shrink'} item">${h5}</div>`
+    }).join('');
+    abortCon.abort();
+    abortCon = new AbortController();
+    scroll2.innerHTML = html;
+    const its = document.querySelectorAll('#scroll2>.item');
+
+    for (let i = 0; i < its.length; i++) {
+      const element = its[i];
+      const j = start + i;
+      const fn = () => {
+        const { height } = element.getBoundingClientRect();
+        if (!data[j]) {
+          debugger;
+        }
+        const newExpand = !data[j].expand;
+        data[j].expand = newExpand;
+        if (newExpand) {
+          element.style.setProperty('height', 'auto')
+        } else {
+          element.style.setProperty('height', '30px')
+        }
+      };
+      element.addEventListener('click', fn, { signal: abortCon.signal });
+    }
+
+  });
+
 </script>
 
 </html>

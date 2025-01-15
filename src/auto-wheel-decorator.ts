@@ -5,6 +5,8 @@ export enum InternalEvent {
   Connected = 'Connected',
   /** 重渲 list */
   CalcList = 'CalcList',
+  /** list 增删移 */
+  ListChange = 'ListChange',
   /** 一切与 scroll 相关的 */
   Scroll = 'Scroll',
   /** 容器高度变化 */
@@ -35,6 +37,8 @@ const InternalEvent2Priority = {
   [InternalEvent.Connected]: EventPriority.Normal,
   /** 重渲 list */
   [InternalEvent.CalcList]: EventPriority.Normal,
+  /** list 增删移 */
+  [InternalEvent.ListChange]: EventPriority.Normal,
   /** 一切与 scroll 相关的 */
   [InternalEvent.Scroll]: EventPriority.Normal,
   /** 容器高度变化 */
