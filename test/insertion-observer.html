@@ -67,12 +67,26 @@
   container.appendChild(tail);
   const its = document.getElementsByClassName('item');
 
-  const obs = new IntersectionObserver(function (entries) {
-    entries.forEach((entry, i) => {
+  container.addEventListener('scroll', () => {
+    Promise.resolve().then(() => {
+      const entries = obs.takeRecords();
+      console.log('entries', entries);
+      
+      entries.forEach((entry, i) => {
       const height = entry.boundingClientRect.height;
       const str =  entry.isIntersecting ? '进入' : '离开';
-      console.log(`no${entry.target.id} 项 ${str}，高度`, height);
+      console.log(`raf => no${entry.target.id} 项 ${str}，高度`, height);
     })
+    })
+  })
+
+
+  const obs = new IntersectionObserver(function (entries) {
+    // entries.forEach((entry, i) => {
+    //   const height = entry.boundingClientRect.height;
+    //   const str =  entry.isIntersecting ? '进入' : '离开';
+    //   console.log(`no${entry.target.id} 项 ${str}，高度`, height);
+    // })
   }, 
   {
     root: container

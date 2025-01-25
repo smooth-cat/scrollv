@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document</title>
+  <script src="./mock.js" ></script>
+  <script src="../dist/scrollv.umd.js" ></script>
+  <script>Scrollv.define('scroll-v', Scrollv.AutoHeight)</script>
+</head>
+<style>
+  .item {
+    overflow: hidden;
+    box-sizing: border-box;
+    height: 30px;
+  }
+  .red {
+    border: 1px solid red;
+  }
+  .blue {
+    border: 1px solid blue;
+  }
+  .expand {
+    height: auto;
+  }
+  .normal {
+    height: 30px;
+  }
+</style>
+<body style="height: 80vh; display: flex;">
+  <div style="height: 100%; display: flex; flex-direction: column; width: 400px;">
+    <div>
+      <button id="btn" style="flex: none;">滚动</button>
+      <input id="ipt" placeholder="index" style="width: 60px;"/>
+      <input id="dt" placeholder="dt" style="width: 60px;"/>
+      <button id="switchBtn" style="flex: none;">切换位置</button>
+      <button id="destroyBtn" style="flex: none;">删除</button>
+    </div>
+    <div id="theOne" style="border: 2px solid green; flex: 1; height: 1px;" >
+      <!-- <scroll-v id="scroll" style="height: 100%;" total="1" itemHeight="200" pad="2">
+      </scroll-v> -->
+    </div>
+  </div>
+  <div id="another" style="border: 2px solid black; box-sizing: border-box; height: 100%; display: flex; flex-direction: column; width: 450px;"></div>
+</body>
+<script>
+  const eventMap = new Map();
+  const scroll= document.createElement('scroll-v');
+  const total = 50;
+  scroll.setAttribute('style', 'height: 100%;');
+  scroll.setAttribute('total', total);
+  scroll.setAttribute('itemHeight', '150');
+  scroll.setAttribute('pad', '150');
+  
+  const data = Array.from({length: total}, (_, i) => ({ expand: true, h5: `第${i}项<br/>${window.Mock.Random.paragraph()}`}))
+  scroll.addEventListener('slice', () => {
+    const { start, end } = scroll;
+    console.trace({ start, end });
+    const html = data.slice(start, end).map(({ h5, expand }, i) => {
+      const isSingle = (start+i) % 2 === 1;
+      return `<div class="${isSingle ? 'blue' : 'red'} ${expand ?  'expand' : 'normal' } item">${h5}</div>`
+    }).join('');
+    eventMap.forEach((fn, element) => {
+      element.removeEventListener('click', fn);
+    })
+    eventMap.clear();
+
+    scroll.innerHTML = html;
+    const its = document.getElementsByClassName('item');
+    
+    for (let i=0;  i < its.length; i++) {
+      const element = its[i];
+      const j = start + i;
+      const fn = () => {
+        const newExpand = !data[j].expand;
+        data[j].expand = newExpand;
+        if(newExpand) {
+          element.style.setProperty('height', 'auto')
+        } else {
+          element.style.setProperty('height', '30px')
+        }
+      };
+      element.addEventListener('click', fn);
+      eventMap.set(element, fn);
+    }
+  });
+  theOne.appendChild(scroll);
+
+  ipt.addEventListener('keydown', toItem1);
+  dt.addEventListener('keydown', toItem1);
+  function toItem1 (e) {
+    if (e && e.keyCode === 13) {
+      try {
+        const num = parseInt(ipt.value, 10);
+        let delta;
+        try {
+          delta = parseInt(dt.value, 10);
+        } catch (e) {
+          delta = 0;
+        }
+        isNaN(delta) && (delta = 0);
+        scroll.scrollv('toItem', { index: num, dt: delta })
+      } catch (err) {
+        console.error(`转换${ipt.value}失败`, err);
+      } finally {
+        ipt.value = '';
+      }
+    }
+  }
+
+</script>
+</html>

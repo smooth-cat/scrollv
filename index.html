@@ -11,7 +11,6 @@
   <script src="./dist/scrollv.umd.js"></script>
   <script>
     Scrollv.define('scroll-v', Scrollv.AutoHeight);
-    Scrollv.define('scroll-vv', Scrollv.AutoHeightInsertion)
   </script>
 </head>
 <style>
@@ -23,12 +22,10 @@
 
   .red {
     border: 1px solid red;
-    background-color: red;
   }
 
   .blue {
     border: 1px solid blue;
-    background-color: blue;
   }
 
   .expand {
@@ -37,6 +34,9 @@
 
   .shrink {
     height: 30px;
+  }
+  .bigH {
+    height: 2000px;
   }
 </style>
 
@@ -68,23 +68,30 @@
   const scroll = document.createElement('scroll-v');
   scroll.setAttribute('id', 'scroll');
   scroll.setAttribute('style', 'height: 100%;');
-  scroll.setAttribute('total', tota + '');
+
+  scroll.setAttribute('total', tota);
   scroll.setAttribute('itemHeight', '150');
-  scroll.setAttribute('pad', '2');
-  scroll.setAttribute('rate', '0.3');
-  scroll.setAttribute('passive', '');
-  theOne.appendChild(scroll);
+  scroll.setAttribute('pad', '300');
+  
+  // scroll.setAttribute('total', tota + '');
+  // scroll.setAttribute('itemHeight', '150');
+  // scroll.setAttribute('pad', '150');
+  // scroll.setAttribute('rate', '0.3');
+  // scroll.setAttribute('passive', '');
+  
 
   const data = Array.from({ length: tota }, (_, i) => ({ expand: true, h5: `第${i}项<br/>${window.Mock.Random.paragraph()}` }))
   let lastStart, lastEnd;
   scroll.addEventListener('slice', onSlice);
   function onSlice (e) {
-    const { start, end } = e.detail;
+    const { start, end } = scroll;
     lastStart = start;
     lastEnd = end;
+    console.trace('slice', { start, end })
     const html = data.slice(start, end).map(({ h5, expand }, i) => {
       const isSingle = (start + i) % 2 === 1;
-      return `<div class="${isSingle ? 'blue' : 'red'} ${expand ? 'expand' : 'shrink'} item">${h5}</div>`
+      const j = i + start;
+      return `<div class="${isSingle ? 'blue' : 'red'} ${expand ? 'expand' : 'shrink'} ${j===3 ? 'bigH' :''} item">${h5}</div>`
     }).join('');
     eventMap.forEach((fn, element) => {
       element.removeEventListener('click', fn);
@@ -98,11 +105,14 @@
       const element = its[i];
       const j = start + i;
       const fn = () => {
-        const { height } = element.getBoundingClientRect();
         const newExpand = !data[j].expand;
         data[j].expand = newExpand;
         if (newExpand) {
-          element.style.setProperty('height', 'auto')
+          if(j === 3) {
+            element.style.setProperty('height', '2000px')
+          } else {
+            element.style.setProperty('height', 'auto')
+          }
         } else {
           element.style.setProperty('height', '30px')
         }
@@ -111,30 +121,12 @@
       eventMap.set(element, fn);
     }
   }
-
-
+  
+  theOne.appendChild(scroll);
 
   let toDown = true;
   dty.addEventListener('click', (e) => {
-    try {
-      // const num = parseInt(dty.value, 10);
-      const num = toDown ? 11000 : -9000;
-      toDown = !toDown;
-      const step = Math.ceil(num / 60);
-      let count = 0;
-      const interval = setInterval(() => {
-        if (count === 60) {
-          clearInterval(interval);
-          return;
-        }
-        scroll.onWheel({ deltaY: step, rate: 1 })
-        count++;
-      }, 0);
-    } catch (err) {
-      console.error(`转换${dty.value}失败`, err);
-    } finally {
-      dty.value = '';
-    }
+    scroll.scrollv('toItem', { index: 49 })
   });
 
   function toItem1 (e) {
@@ -160,9 +152,9 @@
   ipt.addEventListener('keydown', toItem1);
   dt.addEventListener('keydown', toItem1);
 
-  scroll.addEventListener('listchange', () => {
-    scroll.scrollv('toItem', { index: 0 })
-  })
+  // scroll.addEventListener('listchange', () => {
+  //   scroll.scrollv('toItem', { index: 0 })
+  // })
 
   delItem.addEventListener('click', () => {
     data.splice(24, 1);
@@ -204,46 +196,46 @@
   })
 
 
-  let abortCon = new AbortController();
+  // let abortCon = new AbortController();
 
-  const scroll2 = document.createElement('scroll-vv');
-  scroll2.setAttribute('id', 'scroll2');
-  scroll2.setAttribute('style', 'height: 100%;');
-  scroll2.setAttribute('total', tota + '');
-  scroll2.setAttribute('itemHeight', '150');
-  scroll2.setAttribute('pad', '300');
-  another.appendChild(scroll2);
-  scroll2.addEventListener('slice', (e) => {
-    const { start, end } = e.detail;
-    const html = data.slice(start, end).map(({ h5, expand }, i) => {
-      const isSingle = (start + i) % 2 === 1;
-      return `<div class="${isSingle ? 'blue' : 'red'} ${expand ? 'expand' : 'shrink'} item">${h5}</div>`
-    }).join('');
-    abortCon.abort();
-    abortCon = new AbortController();
-    scroll2.innerHTML = html;
-    const its = document.querySelectorAll('#scroll2>.item');
+  // const scroll2 = document.createElement('scroll-vv');
+  // scroll2.setAttribute('id', 'scroll2');
+  // scroll2.setAttribute('style', 'height: 100%;');
+  // scroll2.setAttribute('total', tota + '');
+  // scroll2.setAttribute('itemHeight', '150');
+  // scroll2.setAttribute('pad', '300');
+  // another.appendChild(scroll2);
+  // scroll2.addEventListener('slice', (e) => {
+  //   const { start, end } = e.detail;
+  //   const html = data.slice(start, end).map(({ h5, expand }, i) => {
+  //     const isSingle = (start + i) % 2 === 1;
+  //     return `<div class="${isSingle ? 'blue' : 'red'} ${expand ? 'expand' : 'shrink'} item">${h5}</div>`
+  //   }).join('');
+  //   abortCon.abort();
+  //   abortCon = new AbortController();
+  //   scroll2.innerHTML = html;
+  //   const its = document.querySelectorAll('#scroll2>.item');
 
-    for (let i = 0; i < its.length; i++) {
-      const element = its[i];
-      const j = start + i;
-      const fn = () => {
-        const { height } = element.getBoundingClientRect();
-        if (!data[j]) {
-          debugger;
-        }
-        const newExpand = !data[j].expand;
-        data[j].expand = newExpand;
-        if (newExpand) {
-          element.style.setProperty('height', 'auto')
-        } else {
-          element.style.setProperty('height', '30px')
-        }
-      };
-      element.addEventListener('click', fn, { signal: abortCon.signal });
-    }
+  //   for (let i = 0; i < its.length; i++) {
+  //     const element = its[i];
+  //     const j = start + i;
+  //     const fn = () => {
+  //       const { height } = element.getBoundingClientRect();
+  //       if (!data[j]) {
+  //         debugger;
+  //       }
+  //       const newExpand = !data[j].expand;
+  //       data[j].expand = newExpand;
+  //       if (newExpand) {
+  //         element.style.setProperty('height', 'auto')
+  //       } else {
+  //         element.style.setProperty('height', '30px')
+  //       }
+  //     };
+  //     element.addEventListener('click', fn, { signal: abortCon.signal });
+  //   }
 
-  });
+  // });
 
 </script>
 

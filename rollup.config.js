@@ -25,7 +25,7 @@ export default [
       }),
       ENV === 'prod' && strip({
         include: ['**/*.ts','**/*.js'],
-        functions: [ 'console.log' ],
+        functions: ['console.log', 'console.trace'],
       }),
 		]
 	},
@@ -47,7 +47,7 @@ export default [
       }),
       ENV === 'prod' && strip({
         include: ['**/*.ts','**/*.js'],
-        functions: [ 'console.log' ],
+        functions: ['console.log', 'console.trace'],
       }),
 		]
 	}
