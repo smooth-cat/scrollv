@@ -15,16 +15,16 @@
    2. total      代表渲染列表总条目数
    3. itemHeight 预期的高度
    4. pad?:      在屏幕外缓存区域
-	 5. passive?:  不需要执行 preventDefault 时开启可以优化滚动效果
-	 6. rate?:     滚动倍率
+   5. passive?:  不需要执行 preventDefault 时开启可以优化滚动效果
+   6. rate?:     滚动倍率
    -->
   <scroll-v 
     style="height: 60vh; width: 300px;" 
     total="1000" 
     itemHeight="150" 
     pad="300"
-		passive="true"
-		rate="1"
+    passive="true"
+    rate="1"
   />
 </body>
 <script>
